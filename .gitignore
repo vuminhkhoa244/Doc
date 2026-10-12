@@ -1,0 +1,28 @@
+# Secrets / local env
+.env
+**/.env
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+ai-service/data/
+
+# Java / Maven
+backend/target/
+backend/data/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.codex/
+.kilo/
+.kilocode/
+.opencode/
