@@ -13,6 +13,7 @@ import {
   searchDocuments,
   uploadDocument,
 } from "../api.js";
+import { useAuth } from "../AuthContext.jsx";
 import TopBar from "../components/TopBar.jsx";
 import DocumentPanel from "../components/DocumentPanel.jsx";
 import ChatPanel from "../components/ChatPanel.jsx";
@@ -21,6 +22,13 @@ const WELCOME_MESSAGE = {
   id: "welcome",
   role: "assistant",
   content: "Upload a PDF, DOCX, Markdown, or TXT file, wait for indexing, then ask a question about your documents.",
+  sources: [],
+};
+
+const GUEST_WELCOME_MESSAGE = {
+  id: "welcome",
+  role: "assistant",
+  content: "Welcome! You're browsing in guest mode. Sign up or log in to upload documents, chat with your files, and save your conversation history.",
   sources: [],
 };
 
@@ -48,7 +56,8 @@ function toUiMessages(messages) {
   return uiMessages;
 }
 
-export default function DashboardPage({ user, onLogout }) {
+export default function DashboardPage() {
+  const { user, openAuth, consumePendingAction } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -64,7 +73,7 @@ export default function DashboardPage({ user, onLogout }) {
   const resumeChecked = useRef(false);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
-  const messages = activeConversation?.messages ?? [WELCOME_MESSAGE];
+  const messages = activeConversation?.messages ?? (user ? [WELCOME_MESSAGE] : [GUEST_WELCOME_MESSAGE]);
 
   const activeDocument = useMemo(
     () => documents.find((document) => document.id === activeDocumentId),
@@ -75,7 +84,17 @@ export default function DashboardPage({ user, onLogout }) {
     (document) => document.status === "indexing" || document.status === "INDEXING",
   );
 
+  // Load data when authenticated; reset state when logged out
   useEffect(() => {
+    if (!user?.id) {
+      setConversations([]);
+      setDocuments([]);
+      setActiveConversationId(null);
+      setActiveDocumentId("");
+      setActiveDocumentIds([]);
+      setSearchResults([]);
+      return undefined;
+    }
     let isMounted = true;
     setIsLoadingDocuments(true);
     Promise.all([listDocuments(), listConversations()])
@@ -87,6 +106,11 @@ export default function DashboardPage({ user, onLogout }) {
         setConversations(
           conversationResult.map((conversation) => ({ ...conversation, messages: null })),
         );
+        // Fire pending action after data load (e.g. guest asked a question, then logged in)
+        const action = consumePendingAction();
+        if (action?.type === "ask") {
+          handleAsk(action.question, { tool: action.tool, documentIds: action.documentIds });
+        }
       })
       .catch((error) => {
         if (isMounted) setErrorMessage(error.message);
@@ -95,13 +119,13 @@ export default function DashboardPage({ user, onLogout }) {
         if (isMounted) setIsLoadingDocuments(false);
       });
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    return () => { isMounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
+  // Resume conversation from history page
   useEffect(() => {
-    if (resumeChecked.current) return;
+    if (!user?.id || resumeChecked.current) return;
     resumeChecked.current = true;
     const raw = window.localStorage.getItem(RESUME_KEY);
     if (!raw) return;
@@ -115,19 +139,23 @@ export default function DashboardPage({ user, onLogout }) {
       // ignore malformed resume payload
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
+  // Poll for document indexing status
   useEffect(() => {
     if (!hasPendingIndexing) return undefined;
     const interval = window.setInterval(() => {
       listDocuments()
         .then(setDocuments)
-        .catch(() => {
-          // polling failures are non-fatal; next tick retries
-        });
+        .catch(() => { /* polling failures are non-fatal; next tick retries */ });
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [hasPendingIndexing]);
+
+  function requireAuth(action = null) {
+    openAuth("login", action);
+    return false;
+  }
 
   async function refreshDocuments() {
     const result = await listDocuments();
@@ -136,6 +164,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleUpload(file) {
+    if (!user) return requireAuth({ type: "upload" });
     setErrorMessage("");
     try {
       const document = await uploadDocument(file);
@@ -148,6 +177,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleDelete(documentId) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       await deleteDocument(documentId);
@@ -160,6 +190,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleRename(documentId, filename) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       const updated = await renameDocument(documentId, filename);
@@ -172,6 +203,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleDownload(documentId, filename) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       await downloadDocument(documentId, filename);
@@ -181,6 +213,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleReindex(documentId) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       const updated = await reindexDocument(documentId);
@@ -193,6 +226,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function createNewConversation() {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       const created = await createConversation("New chat");
@@ -204,6 +238,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function switchConversation(id) {
+    if (!user) return requireAuth();
     setActiveConversationId(id);
     const existing = conversations.find((c) => c.id === id);
     if (existing?.messages !== null && existing?.messages !== undefined) return;
@@ -226,6 +261,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleDeleteConversation(id) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     try {
       await deleteConversationApi(id);
@@ -242,6 +278,9 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleAsk(question, options = {}) {
+    if (!user) {
+      return requireAuth({ type: "ask", question, tool: options.tool ?? "rag", documentIds: options.documentIds ?? [] });
+    }
     const { tool = "rag", documentIds = [] } = options;
     setErrorMessage("");
 
@@ -354,6 +393,7 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   async function handleSearch(filters) {
+    if (!user) return requireAuth();
     setErrorMessage("");
     setIsSearching(true);
     try {
@@ -369,8 +409,6 @@ export default function DashboardPage({ user, onLogout }) {
   return (
     <main className="app-shell">
       <TopBar
-        user={user}
-        onLogout={onLogout}
         onNewConversation={createNewConversation}
         activeConversationTitle={activeConversation?.title}
       />
@@ -428,6 +466,8 @@ export default function DashboardPage({ user, onLogout }) {
           isSearching={isSearching}
           isLoading={isLoadingDocuments}
           onRefresh={refreshDocuments}
+          isGuest={!user}
+          onRequireAuth={requireAuth}
         />
         <ChatPanel
           activeDocument={activeDocument}
@@ -440,6 +480,8 @@ export default function DashboardPage({ user, onLogout }) {
           onToggleDocument={handleToggleDocument}
           selectedTool={selectedTool}
           onToolChange={handleToolChange}
+          isGuest={!user}
+          onRequireAuth={requireAuth}
         />
       </div>
     </main>

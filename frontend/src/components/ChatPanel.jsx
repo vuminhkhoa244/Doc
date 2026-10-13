@@ -31,6 +31,8 @@ export default function ChatPanel({
   activeDocumentIds = [],
   selectedTool = "rag",
   onToolChange,
+  isGuest = false,
+  onRequireAuth,
 }) {
   const [question, setQuestion] = useState("");
   const [showToolSelector, setShowToolSelector] = useState(false);
@@ -94,6 +96,10 @@ export default function ChatPanel({
     if (!canAsk) return;
     const nextQuestion = question.trim();
     setQuestion("");
+    if (isGuest) {
+      onRequireAuth?.({ type: "ask", question: nextQuestion, tool: selectedTool, documentIds: activeDocumentIds });
+      return;
+    }
     await onAsk(nextQuestion, { tool: selectedTool, documentIds: activeDocumentIds });
   }
 
@@ -302,12 +308,18 @@ export default function ChatPanel({
         </div>
       )}
 
+      {isGuest && (
+        <div className="guest-chat-hint">
+          <span>Sign up or log in to send messages and chat with your documents.</span>
+        </div>
+      )}
+
       <form className="chat-input" onSubmit={handleSubmit}>
         <input
           type="text"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask about annual leave, Docker setup, policies..."
+          placeholder={isGuest ? "Sign up to ask questions..." : "Ask about annual leave, Docker setup, policies..."}
           aria-label="Question"
         />
         <button className="send-button" type="submit" disabled={!canAsk} title="Send question">

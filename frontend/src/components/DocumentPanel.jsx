@@ -47,6 +47,8 @@ export default function DocumentPanel({
   searchResults,
   isSearching,
   isLoading,
+  isGuest = false,
+  onRequireAuth,
 }) {
   const fileInputRef = useRef(null);
   const [query, setQuery] = useState("");
@@ -59,6 +61,11 @@ export default function DocumentPanel({
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (isGuest) {
+      event.target.value = "";
+      onRequireAuth?.();
+      return;
+    }
     await onUpload(file);
     event.target.value = "";
   }
@@ -66,6 +73,10 @@ export default function DocumentPanel({
   async function handleSearch(event) {
     event.preventDefault();
     if (!query.trim()) return;
+    if (isGuest) {
+      onRequireAuth?.();
+      return;
+    }
     await onSearch({
       query: query.trim(),
       documentId: scope === "selected" ? activeDocumentId : null,
