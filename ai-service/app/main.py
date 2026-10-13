@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import json
 
 import chromadb
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
 from app import generation, indexing, rerank, retrieval
@@ -76,6 +78,24 @@ def create_app(settings: Settings | None = None, collection=None, openai_client=
     return app
 
 
+def _sse_event(event_type: str, payload: dict) -> str:
+    return f"data: {json.dumps({'type': event_type, **payload}, ensure_ascii=False)}\n\n"
+
+
+def _sources_from_chunks(chunks) -> list[SourceOut]:
+    sources: list[SourceOut] = []
+    seen: set[tuple[int, int]] = set()
+    for chunk in chunks:
+        key = (chunk.document_id, chunk.page)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(SourceOut(documentId=chunk.document_id, filename=chunk.filename, page=chunk.page))
+        if len(sources) >= 5:
+            break
+    return sources
+
+
 def _register_routes(app: FastAPI) -> None:
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -144,18 +164,52 @@ def _register_routes(app: FastAPI) -> None:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Query failed: {exc}") from exc
 
-        sources: list[SourceOut] = []
-        seen: set[tuple[int, int]] = set()
-        for chunk in chunks:
-            key = (chunk.document_id, chunk.page)
-            if key in seen:
-                continue
-            seen.add(key)
-            sources.append(SourceOut(documentId=chunk.document_id, filename=chunk.filename, page=chunk.page))
-            if len(sources) >= 5:
-                break
+        return QueryResponse(answer=answer, sources=_sources_from_chunks(chunks))
 
-        return QueryResponse(answer=answer, sources=sources)
+    @app.post("/query_stream")
+    def query_stream(request: QueryRequest) -> StreamingResponse:
+        if app.state.openai is None:
+            raise HTTPException(status_code=503, detail="LLM API key is not configured")
+
+        settings = app.state.settings
+        collection = app.state.collection
+        openai_client = app.state.openai
+        corpus = app.state.corpus
+
+        def event_stream():
+            try:
+                candidate_limit = settings.top_k * 2 if settings.rerank_enabled else settings.top_k
+                chunks = retrieval.search_chunks(
+                    collection,
+                    openai_client,
+                    settings,
+                    request.question,
+                    request.documentIds,
+                    candidate_limit,
+                    corpus=corpus,
+                )
+                chunks = rerank.rerank_chunks(
+                    openai_client, settings, request.question, chunks
+                )[: settings.top_k]
+                parts: list[str] = []
+                for delta in generation.stream_answer(
+                    openai_client, settings, request.question, chunks, request.history
+                ):
+                    parts.append(delta)
+                    yield _sse_event("token", {"content": delta})
+                answer = "".join(parts).strip()
+                if not answer:
+                    answer = generation.NO_CONTEXT_ANSWER
+                    yield _sse_event("token", {"content": answer})
+                sources = _sources_from_chunks(chunks)
+                yield _sse_event(
+                    "done",
+                    {"answer": answer, "sources": [source.model_dump() for source in sources]},
+                )
+            except Exception as exc:
+                yield _sse_event("error", {"detail": f"Query failed: {exc}"})
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.post("/generate", response_model=GenerateResponse)
     def generate(request: GenerateRequest) -> GenerateResponse:
@@ -174,6 +228,29 @@ def _register_routes(app: FastAPI) -> None:
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Generation failed: {exc}") from exc
         return GenerateResponse(answer=answer)
+
+    @app.post("/generate_stream")
+    def generate_stream(request: GenerateRequest) -> StreamingResponse:
+        if app.state.openai is None:
+            raise HTTPException(status_code=503, detail="LLM API key is not configured")
+
+        settings = app.state.settings
+        openai_client = app.state.openai
+
+        def event_stream():
+            try:
+                parts: list[str] = []
+                for delta in generation.stream_from_context(
+                    openai_client, settings, request.question, request.context, request.history
+                ):
+                    parts.append(delta)
+                    yield _sse_event("token", {"content": delta})
+                answer = "".join(parts).strip() or generation.NO_WEB_ANSWER
+                yield _sse_event("done", {"answer": answer})
+            except Exception as exc:
+                yield _sse_event("error", {"detail": f"Generation failed: {exc}"})
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.post("/search", response_model=SearchResponse)
     def search(request: SearchRequest) -> SearchResponse:

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 @Service
 public class AgentService {
@@ -24,6 +25,22 @@ public class AgentService {
     ) {
         Tool selectedTool = resolveTool(question, documentIds, requestedTool);
         ToolResult result = selectedTool.execute(new ToolContext(question, documentIds, userId, history));
+        return new AgentResult(result.answer(), result.sources(), result.toolUsed());
+    }
+
+    public AgentResult runStreaming(
+            String question,
+            List<Long> documentIds,
+            Long userId,
+            String requestedTool,
+            List<AiClient.HistoryTurn> history,
+            Consumer<String> tokenSink
+    ) {
+        Tool selectedTool = resolveTool(question, documentIds, requestedTool);
+        ToolResult result = selectedTool.executeStreaming(
+                new ToolContext(question, documentIds, userId, history),
+                tokenSink
+        );
         return new AgentResult(result.answer(), result.sources(), result.toolUsed());
     }
 

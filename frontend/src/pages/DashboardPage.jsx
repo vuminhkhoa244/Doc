@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  askQuestion,
+  askQuestionStream,
   createConversation,
   deleteConversation as deleteConversationApi,
   deleteDocument,
@@ -268,40 +268,58 @@ export default function DashboardPage({ user, onLogout }) {
       sources: [],
       toolUsed: tool,
     };
+    const assistantId = `assistant-${Date.now()}`;
+    const assistantPlaceholder = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      sources: [],
+      toolUsed: tool,
+      streaming: true,
+    };
 
     setConversations((current) =>
       current.map((c) =>
         c.id === conversationId
           ? {
               ...c,
-              messages: [...(c.messages ?? [WELCOME_MESSAGE]), userMessage],
+              messages: [...(c.messages ?? [WELCOME_MESSAGE]), userMessage, assistantPlaceholder],
             }
           : c,
       ),
     );
     setIsAsking(true);
 
-    try {
-      const response = await askQuestion(question, { tool, documentIds, conversationId });
+    const updateAssistant = (updater) =>
       setConversations((current) =>
         current.map((c) =>
           c.id === conversationId
             ? {
                 ...c,
-                messages: [
-                  ...(c.messages ?? [WELCOME_MESSAGE]),
-                  {
-                    id: `assistant-${Date.now()}`,
-                    role: "assistant",
-                    content: response.answer,
-                    sources: response.sources,
-                    toolUsed: response.toolUsed,
-                  },
-                ],
+                messages: (c.messages ?? [WELCOME_MESSAGE]).map((m) =>
+                  m.id === assistantId ? updater(m) : m,
+                ),
               }
             : c,
         ),
       );
+
+    try {
+      const final = await askQuestionStream(question, {
+        tool,
+        documentIds,
+        conversationId,
+        onToken: (token) => {
+          updateAssistant((message) => ({ ...message, content: message.content + token }));
+        },
+      });
+      updateAssistant(() => ({
+        id: assistantId,
+        role: "assistant",
+        content: final.answer,
+        sources: final.sources ?? [],
+        toolUsed: final.toolUsed ?? tool,
+      }));
     } catch (error) {
       setErrorMessage(error.message);
       setConversations((current) =>
@@ -309,7 +327,9 @@ export default function DashboardPage({ user, onLogout }) {
           c.id === conversationId
             ? {
                 ...c,
-                messages: (c.messages ?? [WELCOME_MESSAGE]).filter((m) => m.id !== userMessage.id),
+                messages: (c.messages ?? [WELCOME_MESSAGE]).filter(
+                  (m) => m.id !== userMessage.id && m.id !== assistantId,
+                ),
               }
             : c,
         ),

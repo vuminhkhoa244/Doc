@@ -163,6 +163,81 @@ export async function askQuestion(question, options = {}) {
   });
 }
 
+export async function askQuestionStream(question, options = {}) {
+  const { tool = "rag", documentIds = [], conversationId, onToken } = options;
+  const body = JSON.stringify({ question, tool, documentIds, conversationId });
+
+  const post = () => {
+    const token = window.localStorage.getItem("accessToken");
+    return fetch(`${API_BASE_URL}/api/chat/query/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body,
+    });
+  };
+
+  let response = await post();
+  if (response.status === 401 && window.localStorage.getItem("refreshToken")) {
+    const refreshed = await tryRefreshTokens();
+    if (refreshed) {
+      response = await post();
+    }
+  }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? `Request failed with ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("Streaming is not supported by this browser.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      let eventName = "message";
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event:")) eventName = line.slice("event:".length).trim();
+        else if (line.startsWith("data:")) data += line.slice("data:".length).trim();
+      }
+      if (!data) continue;
+      let payload;
+      try {
+        payload = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (eventName === "token" && typeof payload === "string") {
+        onToken?.(payload);
+      } else if (eventName === "token" && payload.content) {
+        onToken?.(payload.content);
+      } else if (eventName === "done") {
+        finalPayload = payload;
+      } else if (eventName === "error") {
+        throw new Error(payload.detail ?? "Streaming failed");
+      }
+    }
+  }
+
+  if (!finalPayload) {
+    throw new Error("Stream ended without a final answer");
+  }
+  return finalPayload;
+}
+
 export async function listConversations() {
   return request("/api/chat/conversations");
 }

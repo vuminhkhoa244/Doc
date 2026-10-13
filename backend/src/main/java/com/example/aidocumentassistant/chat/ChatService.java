@@ -5,38 +5,109 @@ import com.example.aidocumentassistant.ai.agent.AgentService;
 import com.example.aidocumentassistant.auth.AppUser;
 import com.example.aidocumentassistant.auth.UserRepository;
 import com.example.aidocumentassistant.security.AuthenticatedUser;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class ChatService {
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
     private static final int HISTORY_TURNS = 4;
+    private static final long STREAM_TIMEOUT_MILLIS = 300_000L;
+    private static final ExecutorService STREAM_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "chat-stream");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final UserRepository users;
     private final ChatHistoryRepository history;
     private final ConversationRepository conversations;
     private final AgentService agentService;
+    private final TransactionTemplate transactionTemplate;
 
     public ChatService(
             UserRepository users,
             ChatHistoryRepository history,
             ConversationRepository conversations,
-            AgentService agentService
+            AgentService agentService,
+            PlatformTransactionManager transactionManager
     ) {
         this.users = users;
         this.history = history;
         this.conversations = conversations;
         this.agentService = agentService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Transactional
     public ChatDtos.ChatResponse ask(AuthenticatedUser principal, String question, String tool, List<Long> documentIds, Long conversationId) {
+        AskContext context = prepare(principal, conversationId);
+        AgentService.AgentResult result = agentService.run(question, documentIds, principal.id(), tool, context.historyTurns());
+        return persistAndRespond(context, question, result);
+    }
+
+    public SseEmitter askStream(AuthenticatedUser principal, String question, String tool, List<Long> documentIds, Long conversationId) {
+        SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MILLIS);
+        STREAM_EXECUTOR.execute(() -> {
+            try {
+                AskContext context = transactionTemplate.execute(status -> prepare(principal, conversationId));
+                if (context == null) {
+                    throw new IllegalStateException("Could not prepare chat context");
+                }
+                AgentService.AgentResult result = agentService.runStreaming(
+                        question,
+                        documentIds,
+                        principal.id(),
+                        tool,
+                        context.historyTurns(),
+                        token -> {
+                            try {
+                                emitter.send(SseEmitter.event().name("token").data(token));
+                            } catch (IOException exception) {
+                                throw new StreamAbortedException(exception);
+                            }
+                        }
+                );
+                ChatDtos.ChatResponse response = transactionTemplate.execute(
+                        status -> persistAndRespond(context, question, result)
+                );
+                emitter.send(SseEmitter.event().name("done").data(response));
+                emitter.complete();
+            } catch (Exception exception) {
+                log.warn("Streaming chat failed: {}", exception.getMessage());
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("error")
+                            .data(Map.of("detail", exception.getMessage() == null ? "Streaming failed" : exception.getMessage())));
+                } catch (Exception ignored) {
+                    // emitter may already be closed
+                }
+                emitter.complete();
+            }
+        });
+        emitter.onTimeout(emitter::complete);
+        return emitter;
+    }
+
+    private record AskContext(AppUser user, Conversation conversation, List<AiClient.HistoryTurn> historyTurns) {
+    }
+
+    private AskContext prepare(AuthenticatedUser principal, Long conversationId) {
         AppUser user = users.findById(principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
 
@@ -58,11 +129,13 @@ public class ChatService {
         if (historyTurns.size() > HISTORY_TURNS) {
             historyTurns = historyTurns.subList(historyTurns.size() - HISTORY_TURNS, historyTurns.size());
         }
+        return new AskContext(user, conversation, historyTurns);
+    }
 
-        AgentService.AgentResult result = agentService.run(question, documentIds, principal.id(), tool, historyTurns);
-
+    private ChatDtos.ChatResponse persistAndRespond(AskContext context, String question, AgentService.AgentResult result) {
         String toolUsed = result.toolUsed() != null ? result.toolUsed() : "rag";
-        ChatHistory chatHistory = new ChatHistory(user, question, result.answer(), toolUsed);
+        ChatHistory chatHistory = new ChatHistory(context.user(), question, result.answer(), toolUsed);
+        Conversation conversation = context.conversation();
         if (conversation != null) {
             chatHistory.setConversation(conversation);
             if (conversation.getMessages().isEmpty()) {
@@ -70,8 +143,13 @@ public class ChatService {
             }
         }
         history.save(chatHistory);
-
         return new ChatDtos.ChatResponse(result.answer(), result.sources(), toolUsed);
+    }
+
+    private static final class StreamAbortedException extends RuntimeException {
+        private StreamAbortedException(IOException cause) {
+            super(cause);
+        }
     }
 
     @Transactional(readOnly = true)

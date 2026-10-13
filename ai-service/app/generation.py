@@ -59,6 +59,38 @@ def generate_answer(openai_client, settings: Settings, question: str, chunks: li
     return (response.choices[0].message.content or "").strip() or NO_CONTEXT_ANSWER
 
 
+def stream_answer(
+    openai_client,
+    settings: Settings,
+    question: str,
+    chunks: list[RetrievedChunk],
+    history: list[HistoryTurn] | None,
+):
+    """Yield answer deltas from a streaming completion (falls back to a canned answer)."""
+    if not chunks:
+        yield NO_CONTEXT_ANSWER
+        return
+
+    stream = openai_client.chat.completions.create(
+        model=settings.chat_model,
+        messages=build_messages(settings, question, chunks, history),
+        temperature=0.2,
+        max_tokens=settings.max_answer_tokens,
+        stream=True,
+    )
+    produced = False
+    for event in stream:
+        choices = getattr(event, "choices", None) or []
+        if not choices:
+            continue
+        delta = getattr(getattr(choices[0], "delta", None), "content", None)
+        if delta:
+            produced = True
+            yield delta
+    if not produced:
+        yield NO_CONTEXT_ANSWER
+
+
 WEB_SYSTEM_PROMPT = (
     "You are a helpful research assistant. Answer the user's question using ONLY "
     "the provided web search passages. Rules:\n"
@@ -124,3 +156,31 @@ def generate_from_context(
         max_tokens=settings.max_answer_tokens,
     )
     return (response.choices[0].message.content or "").strip() or NO_WEB_ANSWER
+
+
+def stream_from_context(
+    openai_client,
+    settings: Settings,
+    question: str,
+    context: str,
+    history: list[HistoryTurn] | None,
+):
+    """Yield web-context answer deltas from a streaming completion."""
+    stream = openai_client.chat.completions.create(
+        model=settings.chat_model,
+        messages=build_web_messages(settings, question, context, history),
+        temperature=0.2,
+        max_tokens=settings.max_answer_tokens,
+        stream=True,
+    )
+    produced = False
+    for event in stream:
+        choices = getattr(event, "choices", None) or []
+        if not choices:
+            continue
+        delta = getattr(getattr(choices[0], "delta", None), "content", None)
+        if delta:
+            produced = True
+            yield delta
+    if not produced:
+        yield NO_WEB_ANSWER

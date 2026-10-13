@@ -1,6 +1,8 @@
 package com.example.aidocumentassistant.config;
 
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -14,6 +16,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> responseStatus(ResponseStatusException exception) {
         return error(HttpStatus.valueOf(exception.getStatusCode().value()), exception.getReason());
@@ -31,6 +35,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unexpected(Exception exception) {
+        log.error("Unhandled exception", exception);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected server error");
     }
 

@@ -18,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Service
@@ -63,22 +64,55 @@ public class RagTool implements Tool {
         }
     }
 
-    private ToolResult aiAnswer(ToolContext context) {
+    @Override
+    public ToolResult executeStreaming(ToolContext context, Consumer<String> tokenSink) {
+        List<String> questionTerms = semanticSearchService.tokenize(context.question());
+        if (questionTerms.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Question must contain searchable text");
+        }
+
+        try {
+            return aiAnswerStreaming(context, tokenSink);
+        } catch (RestClientException exception) {
+            ToolResult fallback = extractiveAnswer(context, questionTerms);
+            tokenSink.accept(fallback.answer());
+            return fallback;
+        }
+    }
+
+    private List<Long> scopedDocumentIds(ToolContext context) {
         List<Long> ownerDocumentIds = documents.findByOwnerIdOrderByUploadTimeDesc(context.userId())
                 .stream()
                 .map(document -> document.getId())
                 .toList();
-        List<Long> scopedDocumentIds = (context.documentIds() == null || context.documentIds().isEmpty())
+        return (context.documentIds() == null || context.documentIds().isEmpty())
                 ? ownerDocumentIds
                 : context.documentIds().stream()
                         .filter(ownerDocumentIds::contains)
                         .toList();
+    }
 
+    private ToolResult aiAnswer(ToolContext context) {
         AiClient.QueryResponse response = aiClient.query(new AiClient.QueryRequest(
                 context.question(),
-                scopedDocumentIds,
+                scopedDocumentIds(context),
                 context.history() == null ? List.of() : context.history()
         ));
+
+        List<ChatDtos.SourceResponse> sources = response.sources() == null
+                ? List.of()
+                : response.sources().stream()
+                        .map(source -> new ChatDtos.SourceResponse(source.filename(), source.page()))
+                        .toList();
+        return new ToolResult(response.answer(), sources, ID);
+    }
+
+    private ToolResult aiAnswerStreaming(ToolContext context, Consumer<String> tokenSink) {
+        AiClient.StreamResult response = aiClient.queryStream(new AiClient.QueryRequest(
+                context.question(),
+                scopedDocumentIds(context),
+                context.history() == null ? List.of() : context.history()
+        ), tokenSink);
 
         List<ChatDtos.SourceResponse> sources = response.sources() == null
                 ? List.of()

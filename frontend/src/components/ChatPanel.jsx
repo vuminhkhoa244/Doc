@@ -208,10 +208,20 @@ export default function ChatPanel({
             </div>
             <div className="message-body">
               {message.role === "assistant" ? (
-                <>
-                  <CopyButton text={message.content} />
-                  <MarkdownText>{message.content}</MarkdownText>
-                </>
+                message.streaming && !message.content ? (
+                  <span className="thinking-dots" aria-label="Assistant is thinking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                ) : (
+                  <>
+                    {!message.streaming ? <CopyButton text={message.content} /> : null}
+                    <div className={message.streaming ? "md-streaming" : undefined}>
+                      <MarkdownText>{message.content}</MarkdownText>
+                    </div>
+                  </>
+                )
               ) : (
                 <p>{message.content}</p>
               )}
@@ -234,20 +244,6 @@ export default function ChatPanel({
             </div>
           </article>
         ))}
-        {isAsking ? (
-          <article className="message assistant message-thinking">
-            <div className="message-icon">
-              <Bot size={18} aria-hidden="true" />
-            </div>
-            <div className="message-body">
-              <span className="thinking-dots" aria-label="Assistant is thinking">
-                <span />
-                <span />
-                <span />
-              </span>
-            </div>
-          </article>
-        ) : null}
         <div ref={messagesEndRef} />
       </div>
 

@@ -195,7 +195,9 @@ select:focus {
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -614,6 +616,12 @@ select:focus {
 }
 
 @media (max-width: 920px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
   .auth-shell,
   .workspace {
     grid-template-columns: 1fr;
@@ -1658,6 +1666,20 @@ select:focus {
 
 .md-table-wrap {
   overflow-x: auto;
+}
+
+.md-streaming .markdown-body::after {
+  content: "▍";
+  display: inline-block;
+  margin-left: 2px;
+  color: #2d6a6a;
+  animation: stream-caret-blink 1s step-end infinite;
+}
+
+@keyframes stream-caret-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 

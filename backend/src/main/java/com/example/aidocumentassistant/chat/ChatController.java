@@ -3,6 +3,7 @@ package com.example.aidocumentassistant.chat;
 import com.example.aidocumentassistant.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 
@@ -30,6 +32,14 @@ public class ChatController {
             @Valid @RequestBody ChatDtos.ChatRequest request
     ) {
         return chatService.ask(principal, request.question(), request.tool(), request.documentIds(), request.conversationId());
+    }
+
+    @PostMapping(value = "/query/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter askStream(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Valid @RequestBody ChatDtos.ChatRequest request
+    ) {
+        return chatService.askStream(principal, request.question(), request.tool(), request.documentIds(), request.conversationId());
     }
 
     @GetMapping("/history")

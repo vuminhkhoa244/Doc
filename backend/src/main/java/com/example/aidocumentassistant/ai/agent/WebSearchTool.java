@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 @Service
 public class WebSearchTool implements Tool {
@@ -74,6 +75,44 @@ public class WebSearchTool implements Tool {
         } catch (RestClientException exception) {
             log.warn("Answer generation from web results failed, falling back to snippets: {}", exception.getMessage());
             return new ToolResult(fallbackAnswer(results), List.of(), ID);
+        }
+    }
+
+    @Override
+    public ToolResult executeStreaming(ToolContext context, Consumer<String> tokenSink) {
+        List<WebSearchClient.WebResult> results;
+        try {
+            results = webSearchClient.search(context.question());
+        } catch (RestClientException exception) {
+            log.warn("Web search request failed: {}", exception.getMessage());
+            String answer = "Web search is currently unavailable. Please try again later.";
+            tokenSink.accept(answer);
+            return new ToolResult(answer, List.of(), ID);
+        }
+
+        if (results.isEmpty()) {
+            String answer = "I could not find any web results for that question. Try rephrasing it.";
+            tokenSink.accept(answer);
+            return new ToolResult(answer, List.of(), ID);
+        }
+
+        List<AiClient.HistoryTurn> history = context.history() == null ? List.of() : context.history();
+        try {
+            AiClient.StreamResult response = aiClient.generateStream(
+                    new AiClient.GenerateRequest(context.question(), buildContext(results), history),
+                    tokenSink
+            );
+            if (response.answer() == null || response.answer().isBlank()) {
+                String fallback = fallbackAnswer(results);
+                tokenSink.accept(fallback);
+                return new ToolResult(fallback, List.of(), ID);
+            }
+            return new ToolResult(response.answer().trim(), List.of(), ID);
+        } catch (RestClientException exception) {
+            log.warn("Answer generation from web results failed, falling back to snippets: {}", exception.getMessage());
+            String fallback = fallbackAnswer(results);
+            tokenSink.accept(fallback);
+            return new ToolResult(fallback, List.of(), ID);
         }
     }
 

@@ -1,3 +1,4 @@
+import json
 import math
 import zlib
 from types import SimpleNamespace
@@ -27,7 +28,7 @@ class FakeOpenAI:
         data = [SimpleNamespace(embedding=fake_embedding(text)) for text in input]
         return SimpleNamespace(data=data)
 
-    def _create_chat(self, model, messages, temperature=None, max_tokens=None):
+    def _create_chat(self, model, messages, temperature=None, max_tokens=None, stream=False):
         last_user = next(m for m in reversed(messages) if m["role"] == "user")
         has_context = "Context:" in last_user["content"] and "[1]" in last_user["content"]
         content = (
@@ -35,6 +36,15 @@ class FakeOpenAI:
             if has_context
             else "I could not find a matching answer in your indexed documents."
         )
+        if stream:
+            pieces = [content[index : index + 12] for index in range(0, len(content), 12)]
+
+            def event_stream():
+                for piece in pieces:
+                    delta = SimpleNamespace(content=piece)
+                    yield SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+            return event_stream()
         message = SimpleNamespace(content=content)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
@@ -136,3 +146,54 @@ def test_delete_index(client):
 def test_query_validation_rejects_blank_question(client):
     response = client.post("/query", json={"question": ""})
     assert response.status_code == 422
+
+
+def parse_sse(raw: str) -> list[dict]:
+    events = []
+    for frame in raw.strip().split("\n\n"):
+        for line in frame.split("\n"):
+            if line.startswith("data:"):
+                events.append(json.loads(line[len("data:") :].strip()))
+    return events
+
+
+def test_query_stream_emits_tokens_then_done(client):
+    index_sample_document(client)
+    with client.stream(
+        "POST",
+        "/query_stream",
+        json={"question": "How many days of annual leave do employees get?"},
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        raw = response.read().decode("utf-8")
+
+    events = parse_sse(raw)
+    token_events = [event for event in events if event["type"] == "token"]
+    done_events = [event for event in events if event["type"] == "done"]
+    assert len(done_events) == 1
+    assert len(token_events) >= 2
+    assert "".join(event["content"] for event in token_events) == done_events[0]["answer"]
+    assert "annual leave" in done_events[0]["answer"]
+    assert done_events[0]["sources"][0]["page"] == 12
+
+
+def test_generate_stream_emits_tokens_then_done(client):
+    with client.stream(
+        "POST",
+        "/generate_stream",
+        json={
+            "question": "What is annual leave?",
+            "context": "[1] (Handbook, page 12)\nEmployees receive 15 days of annual leave.\nURL: https://example.com",
+        },
+    ) as response:
+        assert response.status_code == 200
+        raw = response.read().decode("utf-8")
+
+    events = parse_sse(raw)
+    token_events = [event for event in events if event["type"] == "token"]
+    done_events = [event for event in events if event["type"] == "done"]
+    assert len(done_events) == 1
+    assert token_events
+    assert "".join(event["content"] for event in token_events) == done_events[0]["answer"]
+    assert done_events[0]["answer"]
