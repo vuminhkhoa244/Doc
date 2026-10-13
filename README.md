@@ -63,11 +63,16 @@ LLM/embeddings run through [OpenRouter](https://openrouter.ai) (OpenAI-compatibl
 cp .env.example .env
 # edit .env → set OPENROUTER_API_KEY (get a free key at https://openrouter.ai/keys)
 
-docker compose up --build
+docker compose up --build -d      # postgres, ai-service, backend, searxng
+
+cd frontend
+npm install
+npm run dev                       # Vite dev server on http://localhost:5173
 ```
 
 Then open **http://localhost:5173**. Postgres is used in the containerized setup
-(instead of the local H2 default).
+(instead of the local H2 default). The frontend runs via Vite dev server
+(hot reload); no frontend container.
 
 ## Quick start (local, no Docker)
 

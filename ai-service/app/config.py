@@ -18,13 +18,13 @@ class Settings(BaseSettings):
     top_k: int = 5
     history_max_turns: int = 4
     embedding_batch_size: int = 100
-    request_timeout_seconds: float = 60.0
-    max_answer_tokens: int = 800
+    request_timeout_seconds: float = 90.0
+    max_answer_tokens: int = 4000
     max_context_chars: int = 4000
     hybrid_pool: int = 20
     rrf_k: int = 60
     rerank_enabled: bool = True
-    rerank_max_tokens: int = 160
+    rerank_max_tokens: int = 1000
 
     @property
     def resolved_provider(self) -> str:

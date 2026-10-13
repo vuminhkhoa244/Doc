@@ -12,6 +12,8 @@ import {
   Sparkles,
   FileText,
 } from "lucide-react";
+import MarkdownText from "./MarkdownText";
+import CopyButton from "./CopyButton";
 
 const TOOL_OPTIONS = [
   { id: "rag", label: "RAG Search", icon: Search, description: "Search your documents" },
@@ -205,7 +207,14 @@ export default function ChatPanel({
               )}
             </div>
             <div className="message-body">
-              <p>{message.content}</p>
+              {message.role === "assistant" ? (
+                <>
+                  <CopyButton text={message.content} />
+                  <MarkdownText>{message.content}</MarkdownText>
+                </>
+              ) : (
+                <p>{message.content}</p>
+              )}
               {message.sources?.length ? (
                 <div className="sources">
                   {message.sources.map((source, index) => (

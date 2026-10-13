@@ -26,3 +26,6 @@ Thumbs.db
 .kilo/
 .kilocode/
 .opencode/
+# Playwright MCP artifacts
+.playwright-mcp/
+test-shot.png
