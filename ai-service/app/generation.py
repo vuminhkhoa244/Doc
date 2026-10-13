@@ -55,6 +55,7 @@ def generate_answer(openai_client, settings: Settings, question: str, chunks: li
         messages=build_messages(settings, question, chunks, history),
         temperature=0.2,
         max_tokens=settings.max_answer_tokens,
+        **settings.reasoning_extra(),
     )
     return (response.choices[0].message.content or "").strip() or NO_CONTEXT_ANSWER
 
@@ -77,6 +78,7 @@ def stream_answer(
         temperature=0.2,
         max_tokens=settings.max_answer_tokens,
         stream=True,
+        **settings.reasoning_extra(),
     )
     produced = False
     for event in stream:
@@ -154,6 +156,7 @@ def generate_from_context(
         messages=build_web_messages(settings, question, context, history),
         temperature=0.2,
         max_tokens=settings.max_answer_tokens,
+        **settings.reasoning_extra(),
     )
     return (response.choices[0].message.content or "").strip() or NO_WEB_ANSWER
 
@@ -172,6 +175,7 @@ def stream_from_context(
         temperature=0.2,
         max_tokens=settings.max_answer_tokens,
         stream=True,
+        **settings.reasoning_extra(),
     )
     produced = False
     for event in stream:

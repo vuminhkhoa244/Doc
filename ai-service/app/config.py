@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     rerank_enabled: bool = True
     rerank_max_tokens: int = 1000
+    chat_reasoning_enabled: bool = False
 
     @property
     def resolved_provider(self) -> str:
@@ -32,6 +33,16 @@ class Settings(BaseSettings):
         if provider in {"", "auto"}:
             return "openrouter" if self.openrouter_api_key else "openai"
         return provider
+
+    def reasoning_extra(self) -> dict:
+        """OpenRouter request override controlling provider-side thinking.
+
+        When False, asks the provider to skip reasoning tokens so answers start
+        streaming immediately. Ignored by non-OpenRouter providers.
+        """
+        if self.resolved_provider != "openrouter":
+            return {}
+        return {"extra_body": {"reasoning": {"enabled": self.chat_reasoning_enabled}}}
 
     @property
     def resolved_api_key(self) -> str:

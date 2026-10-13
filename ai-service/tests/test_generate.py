@@ -21,7 +21,7 @@ class CapturingOpenAI:
         self.calls: list[list[dict]] = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_chat))
 
-    def _create_chat(self, model, messages, temperature=None, max_tokens=None):
+    def _create_chat(self, model, messages, temperature=None, max_tokens=None, **kwargs):
         self.calls.append(messages)
         message = SimpleNamespace(content=self.reply)
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])

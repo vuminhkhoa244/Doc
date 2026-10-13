@@ -23,12 +23,14 @@ class FakeOpenAI:
     def __init__(self):
         self.embeddings = SimpleNamespace(create=self._create_embeddings)
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_chat))
+        self.last_chat_kwargs = None
 
     def _create_embeddings(self, model, input):
         data = [SimpleNamespace(embedding=fake_embedding(text)) for text in input]
         return SimpleNamespace(data=data)
 
-    def _create_chat(self, model, messages, temperature=None, max_tokens=None, stream=False):
+    def _create_chat(self, model, messages, temperature=None, max_tokens=None, stream=False, **kwargs):
+        self.last_chat_kwargs = {"model": model, "temperature": temperature, "max_tokens": max_tokens, "stream": stream, **kwargs}
         last_user = next(m for m in reversed(messages) if m["role"] == "user")
         has_context = "Context:" in last_user["content"] and "[1]" in last_user["content"]
         content = (
@@ -197,3 +199,21 @@ def test_generate_stream_emits_tokens_then_done(client):
     assert token_events
     assert "".join(event["content"] for event in token_events) == done_events[0]["answer"]
     assert done_events[0]["answer"]
+
+
+def test_chat_requests_disable_openrouter_reasoning_by_default(client, tmp_path):
+    fake = FakeOpenAI()
+    settings = Settings(
+        openai_api_key="test-key",
+        llm_provider="openrouter",
+        openrouter_api_key="or-test-key",
+        chroma_persist_dir=str(tmp_path / "chroma"),
+    )
+    assert settings.chat_reasoning_enabled is False
+    app = create_app(settings=settings, openai_client=fake)
+    with TestClient(app) as test_client:
+        index_sample_document(test_client)
+        response = test_client.post("/query", json={"question": "How many days of annual leave?"})
+        assert response.status_code == 200
+
+    assert fake.last_chat_kwargs["extra_body"] == {"reasoning": {"enabled": False}}

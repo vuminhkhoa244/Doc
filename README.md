@@ -138,6 +138,7 @@ links instead of an LLM answer.
 | `OPENROUTER_API_KEY` | root `.env` / `ai-service/.env` | — | OpenRouter key for chat + embeddings |
 | `LLM_PROVIDER` | `ai-service/.env` | `openrouter` | `openrouter` or `openai` |
 | `CHAT_MODEL` | `ai-service/.env` | `dots-studio/dots-3-note-preview:free` | Chat model (free tier) |
+| `CHAT_REASONING_ENABLED` | `ai-service/.env` | `false` | Ask OpenRouter to skip hidden reasoning tokens |
 | `EMBEDDING_MODEL` | `ai-service/.env` | `nvidia/nemotron-3-embed-1b:free` | Embedding model (free tier) |
 | `TOP_K` | `ai-service/.env` | `5` | Chunks retrieved per query |
 | `RERANK_ENABLED` | `ai-service/.env` | `true` | LLM reranking of retrieval candidates |

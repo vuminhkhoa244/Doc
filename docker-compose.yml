@@ -20,6 +20,7 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHAT_MODEL: ${CHAT_MODEL:-dots-studio/dots-3-note-preview:free}
+      CHAT_REASONING_ENABLED: ${CHAT_REASONING_ENABLED:-false}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nvidia/nemotron-3-embed-1b:free}
       CHROMA_PERSIST_DIR: /app/data/chroma
     volumes:

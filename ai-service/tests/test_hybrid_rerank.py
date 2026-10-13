@@ -15,19 +15,19 @@ from app.rerank import parse_rerank_order
 class RerankFlipOpenAI(FakeOpenAI):
     """Returns a reversed order for rerank prompts, normal answers otherwise."""
 
-    def _create_chat(self, model, messages, temperature=None, max_tokens=None):
+    def _create_chat(self, model, messages, temperature=None, max_tokens=None, **kwargs):
         if messages and messages[0]["role"] == "system" and "rank search passages" in messages[0]["content"].lower():
             return _chat_reply("[2, 1]")
-        return super()._create_chat(model, messages, temperature=temperature, max_tokens=max_tokens)
+        return super()._create_chat(model, messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
 
 
 class RerankGarbageOpenAI(FakeOpenAI):
     """Returns unusable text for rerank prompts to exercise the fallback."""
 
-    def _create_chat(self, model, messages, temperature=None, max_tokens=None):
+    def _create_chat(self, model, messages, temperature=None, max_tokens=None, **kwargs):
         if messages and messages[0]["role"] == "system" and "rank search passages" in messages[0]["content"].lower():
             return _chat_reply("### not a json array ###")
-        return super()._create_chat(model, messages, temperature=temperature, max_tokens=max_tokens)
+        return super()._create_chat(model, messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
 
 
 def _chat_reply(content: str):

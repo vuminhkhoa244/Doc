@@ -57,6 +57,7 @@ def rerank_chunks(
             messages=build_rerank_messages(question, chunks),
             temperature=0.0,
             max_tokens=settings.rerank_max_tokens,
+            **settings.reasoning_extra(),
         )
         raw = (response.choices[0].message.content or "").strip()
         order = parse_rerank_order(raw, len(chunks))
