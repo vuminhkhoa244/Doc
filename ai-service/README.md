@@ -10,6 +10,7 @@ FastAPI service for embeddings, vector retrieval, and LLM answer generation.
 | DELETE | `/index/{documentId}` | Remove all vectors for a document |
 | POST | `/query` | RAG query: hybrid retrieval → LLM rerank → generate an answer with sources |
 | POST | `/search` | Hybrid semantic + lexical search over indexed chunks |
+| POST | `/generate` | Generate an answer from caller-provided context (used by the backend's web-search tool) |
 | GET | `/health` | Liveness probe |
 
 ## Retrieval pipeline
@@ -27,13 +28,17 @@ Queries run through a three-stage pipeline:
 
 The BM25 index is warmed from Chroma on startup, so it survives restarts.
 
+`/generate` skips retrieval entirely: it takes a caller-provided context
+string (e.g. web-search snippets from the backend's SearXNG client) and
+drafts a grounded answer with a web-specific system prompt.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and set `OPENROUTER_API_KEY` (free key from
 https://openrouter.ai/keys). The service talks to OpenRouter's OpenAI-compatible
 API for both chat and embeddings. Defaults are
-`dots-studio/dots-3-note-preview:free` (chat, zero credits) and
-`openai/text-embedding-3-small` (embeddings, ~$0.02/1M tokens).
+`dots-studio/dots-3-note-preview:free` (chat) and
+`nvidia/nemotron-3-embed-1b:free` (embeddings) — both free tiers.
 
 To use OpenAI directly instead, set `LLM_PROVIDER=openai` and `OPENAI_API_KEY`.
 

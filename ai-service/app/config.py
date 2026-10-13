@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = OPENROUTER_BASE_URL
     openai_api_key: str = ""
     openai_base_url: str = ""
-    embedding_model: str = "openai/text-embedding-3-small"
+    embedding_model: str = "nvidia/nemotron-3-embed-1b:free"
     chat_model: str = "dots-studio/dots-3-note-preview:free"
     chroma_persist_dir: str = "./data/chroma"
     collection_name: str = "documents"

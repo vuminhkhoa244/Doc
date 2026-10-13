@@ -11,7 +11,9 @@ public record AppProperties(
         Jwt jwt,
         Cors cors,
         Storage storage,
-        Ai ai
+        Ai ai,
+        WebSearch webSearch,
+        Ocr ocr
 ) {
     public record Jwt(String secret, long accessTokenMinutes, long refreshTokenDays) {
         public Duration accessTokenTtl() {
@@ -30,5 +32,11 @@ public record AppProperties(
     }
 
     public record Ai(String baseUrl) {
+    }
+
+    public record WebSearch(String baseUrl, int timeoutSeconds, int maxResults) {
+    }
+
+    public record Ocr(boolean enabled, String tessdataDir, String language, int dpi, int maxPages, int sparseMinChars) {
     }
 }

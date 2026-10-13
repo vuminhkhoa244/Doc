@@ -16,6 +16,7 @@ public class AiClient {
 
     public AiClient(AppProperties properties) {
         HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
@@ -60,6 +61,15 @@ public class AiClient {
                 .body(SearchResponse.class);
     }
 
+    public GenerateResponse generate(GenerateRequest request) {
+        return restClient.post()
+                .uri("/generate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .body(GenerateResponse.class);
+    }
+
     public record ChunkPayload(int chunkIndex, int page, String text) {
     }
 
@@ -70,6 +80,12 @@ public class AiClient {
     }
 
     public record QueryRequest(String question, List<Long> documentIds, List<HistoryTurn> history) {
+    }
+
+    public record GenerateRequest(String question, String context, List<HistoryTurn> history) {
+    }
+
+    public record GenerateResponse(String answer) {
     }
 
     public record SourcePayload(long documentId, String filename, int page) {

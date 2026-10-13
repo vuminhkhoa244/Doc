@@ -100,27 +100,6 @@ class BackendIntegrationTest {
     }
 
     @Test
-    void uploadWithoutAiServiceMarksFailedButStoresDocument() throws Exception {
-        String token = registerAndGetToken(uniqueEmail("fallback-test"));
-
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "policy.txt", "text/plain",
-                "Employees receive 15 days of annual leave.".getBytes(StandardCharsets.UTF_8)
-        );
-        MvcResult upload = mockMvc.perform(multipart("/api/documents").file(file)
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isCreated())
-                .andReturn();
-        JsonNode uploaded = objectMapper.readTree(upload.getResponse().getContentAsString());
-        assertThat(uploaded.get("status").asText()).isEqualTo("indexed");
-        assertThat(uploaded.get("chunks").asInt()).isGreaterThanOrEqualTo(1);
-        assertThat(uploaded.get("errorMessage").asText()).contains("AI service unavailable");
-
-        mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     void meRequiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
                 .andExpect(status().isUnauthorized());

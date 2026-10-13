@@ -145,7 +145,7 @@ public class DocumentService {
                     documentTextExtractor.extract(storagePath, document.getFilename(), document.getContentType())
             );
             if (splitChunks.isEmpty()) {
-                document.markFailed("No extractable text found in document");
+                document.markFailed("No extractable text found in document (scanned PDFs require Tesseract OCR)");
                 return;
             }
 

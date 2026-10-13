@@ -67,5 +67,15 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
 
 
+class GenerateRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    context: str = Field(min_length=1, max_length=30000)
+    history: Optional[list[HistoryTurn]] = None
+
+
+class GenerateResponse(BaseModel):
+    answer: str
+
+
 class HealthResponse(BaseModel):
     status: str

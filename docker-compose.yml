@@ -40,6 +40,7 @@ services:
       SPRING_DATASOURCE_USERNAME: assistant
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-assistant}
       AI_SERVICE_BASE_URL: http://ai-service:8000
+      WEB_SEARCH_BASE_URL: http://searxng:8080
       APP_JWT_SECRET: ${APP_JWT_SECRET:-change-this-development-secret-change-this-development-secret}
       APP_CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     ports:
@@ -49,6 +50,18 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
+      searxng:
+        condition: service_started
+
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888/
+    volumes:
+      - searxng-data:/etc/searxng
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - "8888:8080"
 
   frontend:
     build:
@@ -63,3 +76,4 @@ services:
 volumes:
   postgres-data:
   chroma-data:
+  searxng-data:

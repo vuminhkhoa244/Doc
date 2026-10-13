@@ -9,6 +9,8 @@ from app.config import Settings
 from app.corpus import Bm25Corpus, CorpusChunk
 from app.models import (
     DeleteIndexResponse,
+    GenerateRequest,
+    GenerateResponse,
     HealthResponse,
     IndexRequest,
     IndexResponse,
@@ -154,6 +156,24 @@ def _register_routes(app: FastAPI) -> None:
                 break
 
         return QueryResponse(answer=answer, sources=sources)
+
+    @app.post("/generate", response_model=GenerateResponse)
+    def generate(request: GenerateRequest) -> GenerateResponse:
+        if app.state.openai is None:
+            raise HTTPException(status_code=503, detail="LLM API key is not configured")
+        try:
+            answer = generation.generate_from_context(
+                app.state.openai,
+                app.state.settings,
+                request.question,
+                request.context,
+                request.history,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Generation failed: {exc}") from exc
+        return GenerateResponse(answer=answer)
 
     @app.post("/search", response_model=SearchResponse)
     def search(request: SearchRequest) -> SearchResponse:

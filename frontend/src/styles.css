@@ -855,6 +855,16 @@ select:focus {
   background: #e6f3f0;
 }
 
+.memory-tool-web {
+  color: #1d4ed8;
+  background: #e8effe;
+}
+
+.memory-tool-sql {
+  color: #8a5a00;
+  background: #fff4d8;
+}
+
 /* ---------- Utilities ---------- */
 
 .sr-only {
