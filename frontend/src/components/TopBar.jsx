@@ -25,7 +25,7 @@ export default function TopBar({ onNewConversation, activeConversationTitle }) {
         ) : null}
         {user ? (
           <>
-            <span>{user.email}</span>
+            <span className="user-email">{user.email}</span>
             <button className="icon-button" title="Logout" aria-label="Logout" onClick={logout}>
               <LogOut size={18} />
             </button>

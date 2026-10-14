@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   askQuestionStream,
   createConversation,
@@ -421,7 +422,8 @@ export default function DashboardPage() {
         </div>
       ) : null}
       <div className="conversation-toolbar">
-        <button className="primary-button" type="button" onClick={createNewConversation}>
+        <button className="primary-button new-chat-button" type="button" onClick={createNewConversation}>
+          <Plus size={16} aria-hidden="true" />
           New chat
         </button>
         <div className="conversation-list" role="tablist">
@@ -476,6 +478,8 @@ export default function DashboardPage() {
           onAsk={handleAsk}
           isAsking={isAsking}
           onSelectDocument={handleSelectDocument}
+          onDeselectDocument={() => setActiveDocumentId("")}
+          onUpload={handleUpload}
           activeDocumentIds={activeDocumentIds}
           onToggleDocument={handleToggleDocument}
           selectedTool={selectedTool}

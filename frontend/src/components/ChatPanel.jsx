@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   Bot,
-  MessageSquare,
+  User,
   Search,
   Send,
   Brain,
@@ -11,16 +11,36 @@ import {
   X,
   Sparkles,
   FileText,
+  Plus,
 } from "lucide-react";
 import MarkdownText from "./MarkdownText";
 import CopyButton from "./CopyButton";
 import SourcePreviewModal from "./SourcePreviewModal.jsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const TOOL_OPTIONS = [
   { id: "rag", label: "RAG Search", icon: Search, description: "Search your documents" },
   { id: "web", label: "Web Search", icon: Globe, description: "Search the internet" },
   { id: "sql", label: "SQL Query", icon: Database, description: "Query structured data" },
 ];
+
+function getFileTag(filename = "") {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "tag-pdf";
+  if (ext === "docx") return "tag-docx";
+  if (ext === "md" || ext === "markdown") return "tag-md";
+  if (ext === "txt") return "tag-txt";
+  return "tag-file";
+}
 
 export default function ChatPanel({
   activeDocument,
@@ -30,6 +50,8 @@ export default function ChatPanel({
   isAsking,
   onToggleDocument,
   onSelectDocument,
+  onDeselectDocument,
+  onUpload,
   activeDocumentIds = [],
   selectedTool = "rag",
   onToolChange,
@@ -37,12 +59,10 @@ export default function ChatPanel({
   onRequireAuth,
 }) {
   const [question, setQuestion] = useState("");
-  const [showToolSelector, setShowToolSelector] = useState(false);
-  const [showDocumentSelector, setShowDocumentSelector] = useState(false);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
   const [previewSource, setPreviewSource] = useState(null);
   const messagesEndRef = useRef(null);
-  const headerActionsRef = useRef(null);
+  const chatFileRef = useRef(null);
 
   const canAsk = question.trim().length > 0 && !isAsking;
   const activeTool = TOOL_OPTIONS.find((tool) => tool.id === selectedTool) ?? TOOL_OPTIONS[0];
@@ -68,32 +88,6 @@ export default function ChatPanel({
     ),
   );
 
-  useEffect(() => {
-    if (!showToolSelector && !showDocumentSelector) return undefined;
-    function handlePointerDown(event) {
-      if (!headerActionsRef.current?.contains(event.target)) {
-        setShowToolSelector(false);
-        setShowDocumentSelector(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [showToolSelector, showDocumentSelector]);
-
-  useEffect(() => {
-    function handleKeyDown(event) {
-      if (event.key !== "Escape") return;
-      setShowToolSelector(false);
-      setShowDocumentSelector(false);
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isAsking]);
-
   async function handleSubmit(event) {
     event.preventDefault();
     if (!canAsk) return;
@@ -106,102 +100,106 @@ export default function ChatPanel({
     await onAsk(nextQuestion, { tool: selectedTool, documentIds: activeDocumentIds });
   }
 
+  async function handleChatFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    await onUpload?.(file);
+  }
+
   return (
     <section className="chat-panel">
       <header className="chat-header">
         <div className="chat-header-title">
           <p className="eyebrow">Chat with documents</p>
-          <h2>{activeDocument ? activeDocument.filename : "No document selected"}</h2>
+          {activeDocument ? (
+            <div className="active-doc-tag">
+              <FileText size={15} className={getFileTag(activeDocument.filename)} aria-hidden="true" />
+              <span>{activeDocument.filename}</span>
+              <button
+                type="button"
+                className="active-doc-tag-close"
+                onClick={() => onDeselectDocument?.()}
+                aria-label="Remove file from focus"
+                title="Deselect document"
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <h2>No document selected</h2>
+          )}
         </div>
-        <div className="chat-header-actions" ref={headerActionsRef}>
+        <div className="chat-header-actions">
           <span className="search-pill">
             <ActiveToolIcon size={14} aria-hidden="true" />
             {activeTool.label}
           </span>
-          <div className="tool-selector">
-            <button
-              type="button"
-              className={`icon-button ${showToolSelector ? "active" : ""}`}
-              onClick={() => {
-                setShowToolSelector((open) => !open);
-                setShowDocumentSelector(false);
-              }}
-              aria-label="Choose AI tool"
-              title="AI tools"
-              aria-expanded={showToolSelector}
-            >
-              <Sparkles size={18} aria-hidden="true" />
-            </button>
-            {showToolSelector && (
-              <div className="tool-dropdown" role="menu" aria-label="AI tools">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="icon-button" aria-label="Choose AI tool" title="AI tools">
+                <Sparkles size={18} aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel>AI tools</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={selectedTool} onValueChange={onToolChange}>
                 {TOOL_OPTIONS.map((tool) => (
-                  <button
-                    key={tool.id}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={selectedTool === tool.id}
-                    className={`tool-option ${selectedTool === tool.id ? "selected" : ""}`}
-                    onClick={() => {
-                      onToolChange(tool.id);
-                      setShowToolSelector(false);
-                    }}
-                  >
-                    <tool.icon size={16} aria-hidden="true" />
-                    <span>{tool.label}</span>
-                    <small>{tool.description}</small>
-                  </button>
+                  <DropdownMenuRadioItem key={tool.id} value={tool.id} className="py-2">
+                    <tool.icon aria-hidden="true" />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="font-semibold">{tool.label}</span>
+                      <span className="text-xs text-muted-foreground">{tool.description}</span>
+                    </span>
+                  </DropdownMenuRadioItem>
                 ))}
-              </div>
-            )}
-          </div>
-          <div className="document-selector">
-            <button
-              type="button"
-              className={`icon-button ${showDocumentSelector ? "active" : ""}`}
-              onClick={() => {
-                setShowDocumentSelector((open) => !open);
-                setShowToolSelector(false);
-              }}
-              aria-label="Select documents for chat"
-              title="Select documents"
-              aria-expanded={showDocumentSelector}
-            >
-              <Layers size={18} aria-hidden="true" />
-            </button>
-            {showDocumentSelector && (
-              <div className="document-dropdown">
-                {indexedDocuments.length === 0 ? (
-                  <p className="dropdown-note">
-                    No indexed documents yet. Upload a file and wait for indexing.
-                  </p>
-                ) : (
-                  indexedDocuments.map((doc) => (
-                    <label key={doc.id} className="document-option">
-                      <input
-                        type="checkbox"
-                        checked={activeDocumentIds.includes(doc.id)}
-                        onChange={(event) => onToggleDocument(doc.id, event.target.checked)}
-                      />
-                      <span>{doc.filename}</span>
-                      <small>{activeDocumentIds.includes(doc.id) ? "Selected" : "Off"}</small>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <div className="memory-toggle">
-            <button
-              type="button"
-              className={`icon-button ${showMemoryPanel ? "active" : ""}`}
-              onClick={() => setShowMemoryPanel((open) => !open)}
-              aria-label="Conversation memory"
-              title="Conversation memory"
-              aria-pressed={showMemoryPanel}
-            >
-              <Brain size={18} aria-hidden="true" />
-            </button>
-          </div>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Select documents for chat"
+                title="Select documents"
+              >
+                <Layers size={18} aria-hidden="true" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel>Chat with documents</DropdownMenuLabel>
+              {indexedDocuments.length === 0 ? (
+                <p className="dropdown-note">
+                  No indexed documents yet. Upload a file and wait for indexing.
+                </p>
+              ) : (
+                <DropdownMenuGroup>
+                  {indexedDocuments.map((doc) => (
+                    <DropdownMenuCheckboxItem
+                      key={doc.id}
+                      checked={activeDocumentIds.includes(doc.id)}
+                      onCheckedChange={(checked) => onToggleDocument(doc.id, Boolean(checked))}
+                      onSelect={(event) => event.preventDefault()}
+                      className="py-2"
+                    >
+                      <span className="truncate font-medium">{doc.filename}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            type="button"
+            className={`icon-button ${showMemoryPanel ? "active" : ""}`}
+            onClick={() => setShowMemoryPanel((open) => !open)}
+            aria-label="Conversation memory"
+            title="Conversation memory"
+            aria-pressed={showMemoryPanel}
+          >
+            <Brain size={18} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
@@ -212,7 +210,7 @@ export default function ChatPanel({
               {message.role === "assistant" ? (
                 <Bot size={18} aria-hidden="true" />
               ) : (
-                <MessageSquare size={18} aria-hidden="true" />
+                <User size={18} aria-hidden="true" />
               )}
             </div>
             <div className="message-body">
@@ -331,8 +329,25 @@ export default function ChatPanel({
       )}
 
       <form className="chat-input" onSubmit={handleSubmit}>
+        <button
+          type="button"
+          className="chat-input-action"
+          onClick={() => chatFileRef.current?.click()}
+          title="Upload document"
+          aria-label="Upload document"
+        >
+          <Plus size={18} aria-hidden="true" />
+        </button>
+        <input
+          ref={chatFileRef}
+          type="file"
+          accept=".pdf,.docx,.md,.markdown,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
+          className="hidden-input"
+          onChange={handleChatFileChange}
+        />
         <input
           type="text"
+          className="chat-input-field"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder={isGuest ? "Sign up to ask questions..." : "Ask about annual leave, Docker setup, policies..."}

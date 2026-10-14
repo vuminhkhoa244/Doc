@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   FileText,
+  MoreHorizontal,
   Pencil,
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,6 +11,13 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const ACCEPTED_DROP_FILE = /\.(pdf|docx|md|markdown|txt)$/i;
 
@@ -57,7 +65,6 @@ export default function DocumentPanel({
   const dragDepthRef = useRef(0);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [expandedId, setExpandedId] = useState(null);
   const [sortBy, setSortBy] = useState("newest");
   const [query, setQuery] = useState("");
   const [contentType, setContentType] = useState("");
@@ -91,13 +98,6 @@ export default function DocumentPanel({
       window.removeEventListener("drop", preventDefault);
     };
   }, []);
-
-  // Close the inline action strip if its document disappears
-  useEffect(() => {
-    if (expandedId && !documents.some((document) => document.id === expandedId)) {
-      setExpandedId(null);
-    }
-  }, [documents, expandedId]);
 
   function handleDragEnter(event) {
     event.preventDefault();
@@ -165,7 +165,6 @@ export default function DocumentPanel({
     onSelect(documentId);
     setRenamingId(null);
     setRenameValue("");
-    setExpandedId((current) => (current === documentId ? null : documentId));
   }
 
   function startRename(document) {
@@ -185,11 +184,6 @@ export default function DocumentPanel({
   function cancelRename() {
     setRenamingId(null);
     setRenameValue("");
-  }
-
-  async function handleDeleteClick(documentId) {
-    setExpandedId(null);
-    await onDelete(documentId);
   }
 
   return (
@@ -326,78 +320,72 @@ export default function DocumentPanel({
 
         <div className="document-list" aria-busy={isLoading}>
           {sortedDocuments.map((document) => (
-            <div className="document-entry" key={document.id}>
-              <div
-                className={`document-item ${document.id === activeDocumentId ? "active" : ""}`}
-                onClick={() => handleItemClick(document.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    handleItemClick(document.id);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-              >
-                <FileText size={20} />
-                {renamingId === document.id ? (
-                  <span
-                    className="rename-row"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      type="text"
-                      value={renameValue}
-                      autoFocus
-                      onChange={(event) => setRenameValue(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") commitRename(document.id);
-                        if (event.key === "Escape") cancelRename();
-                      }}
-                      onBlur={() => commitRename(document.id)}
-                      aria-label="New document name"
-                    />
-                  </span>
-                ) : (
+            <div className={`document-item ${document.id === activeDocumentId ? "active" : ""}`} key={document.id}>
+              {renamingId === document.id ? (
+                <span className="rename-row">
+                  <input
+                    type="text"
+                    value={renameValue}
+                    autoFocus
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitRename(document.id);
+                      if (event.key === "Escape") cancelRename();
+                    }}
+                    onBlur={() => commitRename(document.id)}
+                    aria-label="New document name"
+                  />
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="document-item-select"
+                  onClick={() => handleItemClick(document.id)}
+                >
+                  <FileText size={18} />
                   <span>
                     <strong>{document.filename}</strong>
                     <small>
                       {formatType(document.contentType)} · {formatBytes(document.size)} · {formatDate(document.uploadTime)}
                     </small>
                   </span>
-                )}
-                <em className={document.status}>{document.status}</em>
-              </div>
-              {expandedId === document.id && renamingId !== document.id ? (
-                <div className="document-item-inline-actions">
+                  <em className={document.status}>{document.status}</em>
+                </button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <button
-                    className="secondary-button"
-                    onClick={() => startRename(document)}
+                    type="button"
+                    className="doc-more"
+                    aria-label={`Actions for ${document.filename}`}
+                    title="More options"
                   >
-                    <Pencil size={15} />
+                    <MoreHorizontal size={16} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => startRename(document)}>
+                    <Pencil />
                     Rename
-                  </button>
-                  <button
-                    className="secondary-button"
-                    onClick={() => onDownload(document.id, document.filename)}
-                  >
-                    <Download size={15} />
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onDownload(document.id, document.filename)}>
+                    <Download />
                     Download
-                  </button>
-                  <button
-                    className="secondary-button"
-                    onClick={() => onReindex(document.id)}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => onReindex(document.id)}
                     title="Re-extract and re-index this document with the AI service"
                   >
-                    <RefreshCw size={15} />
+                    <RefreshCw />
                     Reindex
-                  </button>
-                  <button className="danger-button" onClick={() => handleDeleteClick(document.id)}>
-                    <Trash2 size={15} />
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => onDelete(document.id)}>
+                    <Trash2 />
                     Delete
-                  </button>
-                </div>
-              ) : null}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
         </div>
