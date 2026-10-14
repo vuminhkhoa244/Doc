@@ -82,6 +82,15 @@ public class DocumentController {
                 .body(new InputStreamResource(inputStream));
     }
 
+    @GetMapping("/{id}/chunks")
+    public List<DocumentDtos.PageChunkResponse> pageChunks(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable Long id,
+            @RequestParam("page") int page
+    ) {
+        return documentService.pageChunks(principal, id, page);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {

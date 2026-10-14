@@ -271,6 +271,10 @@ export async function searchDocuments({ query, documentId, contentType, limit = 
   });
 }
 
+export async function getPageChunks(documentId, page) {
+  return request(`/api/documents/${documentId}/chunks?page=${page}`);
+}
+
 export async function listConversationHistory() {
   return request("/api/chat/history");
 }

@@ -15,6 +15,13 @@ public final class DocumentDtos {
     ) {
     }
 
+    public record PageChunkResponse(
+            int chunkIndex,
+            int page,
+            String text
+    ) {
+    }
+
     public record DocumentResponse(
             Long id,
             String filename,

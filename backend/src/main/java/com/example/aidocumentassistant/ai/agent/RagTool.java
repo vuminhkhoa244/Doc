@@ -102,7 +102,7 @@ public class RagTool implements Tool {
         List<ChatDtos.SourceResponse> sources = response.sources() == null
                 ? List.of()
                 : response.sources().stream()
-                        .map(source -> new ChatDtos.SourceResponse(source.filename(), source.page()))
+                        .map(source -> new ChatDtos.SourceResponse(source.documentId(), source.filename(), source.page()))
                         .toList();
         return new ToolResult(response.answer(), sources, ID);
     }
@@ -117,7 +117,7 @@ public class RagTool implements Tool {
         List<ChatDtos.SourceResponse> sources = response.sources() == null
                 ? List.of()
                 : response.sources().stream()
-                        .map(source -> new ChatDtos.SourceResponse(source.filename(), source.page()))
+                        .map(source -> new ChatDtos.SourceResponse(source.documentId(), source.filename(), source.page()))
                         .toList();
         return new ToolResult(response.answer(), sources, ID);
     }
@@ -192,7 +192,8 @@ public class RagTool implements Tool {
         for (SemanticSearchService.RankedChunk rankedChunk : rankedChunks) {
             DocumentChunk chunk = rankedChunk.chunk();
             String key = chunk.getDocument().getId() + ":" + chunk.getPage();
-            unique.putIfAbsent(key, new ChatDtos.SourceResponse(chunk.getDocument().getFilename(), chunk.getPage()));
+            unique.putIfAbsent(key, new ChatDtos.SourceResponse(
+                    chunk.getDocument().getId(), chunk.getDocument().getFilename(), chunk.getPage()));
             if (unique.size() >= 5) {
                 break;
             }

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Download,
@@ -9,6 +9,8 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+
+const ACCEPTED_DROP_FILE = /\.(pdf|docx|md|markdown|txt)$/i;
 
 function formatBytes(bytes) {
   if (!bytes) return "0 KB";
@@ -51,12 +53,64 @@ export default function DocumentPanel({
   onRequireAuth,
 }) {
   const fileInputRef = useRef(null);
+  const dragDepthRef = useRef(0);
   const [query, setQuery] = useState("");
   const [contentType, setContentType] = useState("");
   const [scope, setScope] = useState("all");
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [dropError, setDropError] = useState("");
   const indexedCount = documents.filter((document) => document.status === "indexed").length;
+
+  // Keep the browser from opening dropped files outside the panel
+  useEffect(() => {
+    function preventDefault(event) {
+      event.preventDefault();
+    }
+    window.addEventListener("dragover", preventDefault);
+    window.addEventListener("drop", preventDefault);
+    return () => {
+      window.removeEventListener("dragover", preventDefault);
+      window.removeEventListener("drop", preventDefault);
+    };
+  }, []);
+
+  function handleDragEnter(event) {
+    event.preventDefault();
+    if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  }
+
+  async function handleDrop(event) {
+    event.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    const file = files.find((candidate) => ACCEPTED_DROP_FILE.test(candidate.name));
+    if (!file) {
+      setDropError("Only PDF, DOCX, Markdown, and TXT files can be uploaded.");
+      return;
+    }
+    setDropError("");
+    if (isGuest) {
+      onRequireAuth?.();
+      return;
+    }
+    await onUpload(file);
+  }
 
   async function handleFileChange(event) {
     const file = event.target.files?.[0];
@@ -104,7 +158,20 @@ export default function DocumentPanel({
   }
 
   return (
-    <aside className="document-panel">
+    <aside
+      className={`document-panel${isDraggingFile ? " drag-over" : ""}`}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile ? (
+        <div className="drop-overlay" aria-hidden="true">
+          <Upload size={28} />
+          <p>Drop your document here</p>
+          <small>PDF, DOCX, Markdown, or TXT</small>
+        </div>
+      ) : null}
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Documents</p>
@@ -131,6 +198,15 @@ export default function DocumentPanel({
         <CheckCircle2 size={18} />
         <span>{indexedCount} indexed</span>
       </div>
+
+      {dropError ? (
+        <p className="drop-error" role="alert">
+          {dropError}
+          <button type="button" onClick={() => setDropError("")} aria-label="Dismiss">
+            ×
+          </button>
+        </p>
+      ) : null}
 
       <form className="document-search" onSubmit={handleSearch}>
         <div className="search-row">

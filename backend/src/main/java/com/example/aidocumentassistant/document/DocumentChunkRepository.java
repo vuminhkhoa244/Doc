@@ -16,5 +16,7 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
             """)
     List<DocumentChunk> findIndexedChunksForOwner(@Param("ownerId") Long ownerId);
 
+    List<DocumentChunk> findByDocumentIdAndPageOrderByChunkIndexAsc(Long documentId, int page);
+
     void deleteAllByDocument(Document document);
 }

@@ -29,7 +29,7 @@ public final class ChatDtos {
     public record ConversationDetailResponse(Long id, String title, java.time.Instant createdAt, List<ConversationMessageResponse> messages) {
     }
 
-    public record SourceResponse(String document, int page) {
+    public record SourceResponse(Long documentId, String document, int page) {
     }
 
     public record ChatResponse(String answer, List<SourceResponse> sources, String toolUsed) {

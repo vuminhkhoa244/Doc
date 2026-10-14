@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import MarkdownText from "./MarkdownText";
 import CopyButton from "./CopyButton";
+import SourcePreviewModal from "./SourcePreviewModal.jsx";
 
 const TOOL_OPTIONS = [
   { id: "rag", label: "RAG Search", icon: Search, description: "Search your documents" },
@@ -28,6 +29,7 @@ export default function ChatPanel({
   onAsk,
   isAsking,
   onToggleDocument,
+  onSelectDocument,
   activeDocumentIds = [],
   selectedTool = "rag",
   onToolChange,
@@ -38,6 +40,7 @@ export default function ChatPanel({
   const [showToolSelector, setShowToolSelector] = useState(false);
   const [showDocumentSelector, setShowDocumentSelector] = useState(false);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [previewSource, setPreviewSource] = useState(null);
   const messagesEndRef = useRef(null);
   const headerActionsRef = useRef(null);
 
@@ -233,11 +236,24 @@ export default function ChatPanel({
               )}
               {message.sources?.length ? (
                 <div className="sources">
-                  {message.sources.map((source, index) => (
-                    <span key={`${source.document}-${source.page}-${index}`}>
-                      {source.document}, page {source.page}
-                    </span>
-                  ))}
+                  {message.sources.map((source, index) => {
+                    const key = `${source.document}-${source.page}-${index}`;
+                    return source.documentId ? (
+                      <button
+                        key={key}
+                        type="button"
+                        className="source-chip"
+                        title={`Preview ${source.document}, page ${source.page}`}
+                        onClick={() => setPreviewSource(source)}
+                      >
+                        {source.document}, page {source.page}
+                      </button>
+                    ) : (
+                      <span key={key}>
+                        {source.document}, page {source.page}
+                      </span>
+                    );
+                  })}
                 </div>
               ) : null}
               {message.role === "assistant" && message.toolUsed ? (
@@ -326,6 +342,17 @@ export default function ChatPanel({
           <Send size={18} aria-hidden="true" />
         </button>
       </form>
+
+      {previewSource ? (
+        <SourcePreviewModal
+          source={previewSource}
+          onClose={() => setPreviewSource(null)}
+          onOpenDocument={(documentId) => {
+            onSelectDocument?.(documentId);
+            setPreviewSource(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

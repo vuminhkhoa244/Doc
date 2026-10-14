@@ -126,5 +126,54 @@ class BackendIntegrationTest {
         JsonNode body = objectMapper.readTree(chat.getResponse().getContentAsString());
         assertThat(body.get("answer").asText()).isNotBlank();
         assertThat(body.get("toolUsed").asText()).isIn("rag", "rag-fallback");
+        JsonNode sources = body.get("sources");
+        assertThat(sources.isArray()).isTrue();
+        assertThat(sources.size()).isGreaterThan(0);
+        assertThat(sources.get(0).get("documentId").asLong()).isPositive();
+        assertThat(sources.get(0).get("document").asText()).isEqualTo("handbook.txt");
+    }
+
+    @Test
+    void pageChunksReturnsTextAndRequiresOwnership() throws Exception {
+        String ownerToken = registerAndGetToken(uniqueEmail("chunks-owner"));
+        String strangerToken = registerAndGetToken(uniqueEmail("chunks-stranger"));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "leave-policy.txt", "text/plain",
+                "Employees receive 20 days of annual leave each calendar year.".getBytes(StandardCharsets.UTF_8)
+        );
+        MvcResult upload = mockMvc.perform(multipart("/api/documents").file(file)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isCreated())
+                .andReturn();
+        long documentId = objectMapper.readTree(upload.getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(get("/api/documents/" + documentId + "/chunks")
+                        .param("page", "1")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].page").value(1))
+                .andExpect(jsonPath("$[0].chunkIndex").value(0));
+
+        MvcResult chunks = mockMvc.perform(get("/api/documents/" + documentId + "/chunks")
+                        .param("page", "1")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(chunks.getResponse().getContentAsString()).contains("20 days of annual leave");
+
+        mockMvc.perform(get("/api/documents/" + documentId + "/chunks")
+                        .param("page", "1")
+                        .header("Authorization", "Bearer " + strangerToken))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/documents/" + documentId + "/chunks")
+                        .param("page", "0")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/documents/" + documentId + "/chunks")
+                        .param("page", "1"))
+                .andExpect(status().isUnauthorized());
     }
 }

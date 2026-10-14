@@ -135,6 +135,19 @@ public class DocumentService {
         return new DocumentFile(document.getFilename(), document.getContentType(), path);
     }
 
+    @Transactional(readOnly = true)
+    public List<DocumentDtos.PageChunkResponse> pageChunks(AuthenticatedUser principal, Long id, int page) {
+        if (page < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be 1 or greater");
+        }
+        Document document = documents.findByIdAndOwnerId(id, principal.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        return chunks.findByDocumentIdAndPageOrderByChunkIndexAsc(document.getId(), page)
+                .stream()
+                .map(chunk -> new DocumentDtos.PageChunkResponse(chunk.getChunkIndex(), chunk.getPage(), chunk.getText()))
+                .toList();
+    }
+
     public record DocumentFile(String filename, String contentType, Path path) {
     }
 
