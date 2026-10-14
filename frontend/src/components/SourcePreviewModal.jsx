@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { FileText, X } from "lucide-react";
 import { getPageChunks } from "../api.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export default function SourcePreviewModal({ source, onClose, onOpenDocument }) {
   const [chunks, setChunks] = useState([]);
@@ -28,36 +36,38 @@ export default function SourcePreviewModal({ source, onClose, onOpenDocument }) 
     };
   }, [source?.documentId, source?.page]);
 
-  useEffect(() => {
-    function handleKeyDown(event) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   if (!source) return null;
 
   return (
-    <div className="auth-modal-overlay source-preview-overlay" onClick={onClose}>
-      <div
-        className="source-preview-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Source preview: ${source.document}, page ${source.page}`}
-        onClick={(event) => event.stopPropagation()}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        className="source-preview-modal flex flex-col gap-0 border-0"
+        style={{ maxWidth: "none" }}
+        overlayClassName="auth-modal-overlay source-preview-overlay"
+        showCloseButton={false}
       >
-        <button className="auth-modal-close" onClick={onClose} aria-label="Close" type="button">
-          <X size={18} />
-        </button>
+        <DialogClose asChild>
+          <button className="auth-modal-close" aria-label="Close" type="button">
+            <X size={18} />
+          </button>
+        </DialogClose>
 
         <div className="source-preview-header">
           <span className="source-preview-icon">
             <FileText size={18} aria-hidden="true" />
           </span>
           <div>
-            <h3>{source.document}</h3>
-            <p>Page {source.page} · extracted text used for this answer</p>
+            <DialogTitle asChild>
+              <h3>{source.document}</h3>
+            </DialogTitle>
+            <DialogDescription asChild>
+              <p>Page {source.page} · extracted text used for this answer</p>
+            </DialogDescription>
           </div>
         </div>
 
@@ -78,18 +88,18 @@ export default function SourcePreviewModal({ source, onClose, onOpenDocument }) 
         </div>
 
         <div className="source-preview-footer">
-          <button className="secondary-button" type="button" onClick={onClose}>
+          <Button variant="secondary" className="secondary-button" type="button" onClick={onClose}>
             Close
-          </button>
-          <button
+          </Button>
+          <Button
             className="primary-button"
             type="button"
             onClick={() => onOpenDocument(source.documentId)}
           >
             Open document
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
