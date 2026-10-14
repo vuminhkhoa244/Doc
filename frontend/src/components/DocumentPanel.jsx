@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2,
   Download,
   FileText,
   Pencil,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   Trash2,
@@ -54,6 +55,10 @@ export default function DocumentPanel({
 }) {
   const fileInputRef = useRef(null);
   const dragDepthRef = useRef(0);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [sortBy, setSortBy] = useState("newest");
   const [query, setQuery] = useState("");
   const [contentType, setContentType] = useState("");
   const [scope, setScope] = useState("all");
@@ -61,7 +66,18 @@ export default function DocumentPanel({
   const [renameValue, setRenameValue] = useState("");
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [dropError, setDropError] = useState("");
-  const indexedCount = documents.filter((document) => document.status === "indexed").length;
+
+  const sortedDocuments = useMemo(() => {
+    const list = [...documents];
+    if (sortBy === "oldest") {
+      list.sort((a, b) => new Date(a.uploadTime) - new Date(b.uploadTime));
+    } else if (sortBy === "name") {
+      list.sort((a, b) => a.filename.localeCompare(b.filename));
+    } else {
+      list.sort((a, b) => new Date(b.uploadTime) - new Date(a.uploadTime));
+    }
+    return list;
+  }, [documents, sortBy]);
 
   // Keep the browser from opening dropped files outside the panel
   useEffect(() => {
@@ -75,6 +91,13 @@ export default function DocumentPanel({
       window.removeEventListener("drop", preventDefault);
     };
   }, []);
+
+  // Close the inline action strip if its document disappears
+  useEffect(() => {
+    if (expandedId && !documents.some((document) => document.id === expandedId)) {
+      setExpandedId(null);
+    }
+  }, [documents, expandedId]);
 
   function handleDragEnter(event) {
     event.preventDefault();
@@ -138,6 +161,13 @@ export default function DocumentPanel({
     });
   }
 
+  function handleItemClick(documentId) {
+    onSelect(documentId);
+    setRenamingId(null);
+    setRenameValue("");
+    setExpandedId((current) => (current === documentId ? null : documentId));
+  }
+
   function startRename(document) {
     setRenamingId(document.id);
     setRenameValue(document.filename);
@@ -157,220 +187,230 @@ export default function DocumentPanel({
     setRenameValue("");
   }
 
+  async function handleDeleteClick(documentId) {
+    setExpandedId(null);
+    await onDelete(documentId);
+  }
+
   return (
     <aside
-      className={`document-panel${isDraggingFile ? " drag-over" : ""}`}
+      className={`document-panel${isDraggingFile ? " drag-over" : ""}${isPanelOpen ? "" : " collapsed"}`}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {isDraggingFile ? (
-        <div className="drop-overlay" aria-hidden="true">
-          <Upload size={28} />
-          <p>Drop your document here</p>
-          <small>PDF, DOCX, Markdown, or TXT</small>
-        </div>
-      ) : null}
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">Documents</p>
-          <h2>{documents.length} files</h2>
-        </div>
-        <button
-          className="icon-button"
-          title="Upload document"
-          aria-label="Upload document"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload size={18} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.docx,.md,.markdown,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
-          className="hidden-input"
-          onChange={handleFileChange}
-        />
-      </div>
-
-      <div className="indexing-summary">
-        <CheckCircle2 size={18} />
-        <span>{indexedCount} indexed</span>
-      </div>
-
-      {dropError ? (
-        <p className="drop-error" role="alert">
-          {dropError}
-          <button type="button" onClick={() => setDropError("")} aria-label="Dismiss">
-            ×
-          </button>
-        </p>
-      ) : null}
-
-      <form className="document-search" onSubmit={handleSearch}>
-        <div className="search-row">
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search vacation, Docker, policy..."
-            aria-label="Semantic search query"
-          />
-          <button className="icon-button" type="submit" disabled={!query.trim() || isSearching} title="Search">
-            <Search size={18} />
-          </button>
-        </div>
-        <div className="filter-row">
-          <select
-            value={scope}
-            onChange={(event) => setScope(event.target.value)}
-            aria-label="Search scope"
-            disabled={!activeDocumentId}
-          >
-            <option value="all">All documents</option>
-            <option value="selected">Selected document</option>
-          </select>
-          <select
-            value={contentType}
-            onChange={(event) => setContentType(event.target.value)}
-            aria-label="File type filter"
-          >
-            <option value="">Any type</option>
-            <option value="pdf">PDF</option>
-            <option value="wordprocessingml">DOCX</option>
-            <option value="markdown">Markdown</option>
-            <option value="plain">TXT</option>
-          </select>
-        </div>
-      </form>
-
-      {searchResults.length ? (
-        <div className="search-results">
-          {searchResults.map((result) => (
+        {isDraggingFile ? (
+          <div className="drop-overlay" aria-hidden="true">
+            <Upload size={28} />
+            <p>Drop your document here</p>
+            <small>PDF, DOCX, Markdown, or TXT</small>
+          </div>
+        ) : null}
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Documents</p>
+            <h2>{documents.length} files</h2>
+          </div>
+          <div className="panel-heading-actions">
             <button
-              key={`${result.documentId}-${result.page}-${result.chunkIndex}`}
-              className="search-result"
-              onClick={() => onSelect(result.documentId)}
+              className={`icon-button${isSearchOpen ? " active" : ""}`}
+              title="Search documents"
+              aria-label="Search documents"
+              aria-expanded={isSearchOpen}
+              onClick={() => setIsSearchOpen((open) => !open)}
             >
-              <strong>{result.document}</strong>
-              <small>
-                {formatType(result.contentType)} · page {result.page} · score {result.score.toFixed(2)}
-              </small>
-              <span>{result.snippet}</span>
+              <Search size={18} />
             </button>
+            <button
+              className="icon-button"
+              title="Upload document"
+              aria-label="Upload document"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload size={18} />
+            </button>
+            <button
+              className="icon-button"
+              title="Hide sidebar"
+              aria-label="Hide sidebar"
+              onClick={() => setIsPanelOpen(false)}
+            >
+              <PanelLeftClose size={18} />
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.md,.markdown,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
+            className="hidden-input"
+            onChange={handleFileChange}
+          />
+        </div>
+
+        {dropError ? (
+          <p className="drop-error" role="alert">
+            {dropError}
+            <button type="button" onClick={() => setDropError("")} aria-label="Dismiss">
+              ×
+            </button>
+          </p>
+        ) : null}
+
+        {isSearchOpen ? (
+          <form className="document-search" onSubmit={handleSearch}>
+            <div className="search-row">
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search vacation, Docker, policy..."
+                aria-label="Semantic search query"
+              />
+              <button className="icon-button" type="submit" disabled={!query.trim() || isSearching} title="Search">
+                <Search size={18} />
+              </button>
+            </div>
+            <div className="filter-row">
+              <select
+                value={scope}
+                onChange={(event) => setScope(event.target.value)}
+                aria-label="Search scope"
+                disabled={!activeDocumentId}
+              >
+                <option value="all">All documents</option>
+                <option value="selected">Selected document</option>
+              </select>
+              <select
+                value={contentType}
+                onChange={(event) => setContentType(event.target.value)}
+                aria-label="File type filter"
+              >
+                <option value="">Any type</option>
+                <option value="pdf">PDF</option>
+                <option value="wordprocessingml">DOCX</option>
+                <option value="markdown">Markdown</option>
+                <option value="plain">TXT</option>
+              </select>
+            </div>
+            <div className="filter-row">
+              <select
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
+                aria-label="Sort documents"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="name">Name A–Z</option>
+              </select>
+            </div>
+            {searchResults.length ? (
+              <div className="search-results">
+                {searchResults.map((result) => (
+                  <button
+                    key={`${result.documentId}-${result.page}-${result.chunkIndex}`}
+                    className="search-result"
+                    onClick={() => onSelect(result.documentId)}
+                  >
+                    <strong>{result.document}</strong>
+                    <small>
+                      {formatType(result.contentType)} · page {result.page} · score {result.score.toFixed(2)}
+                    </small>
+                    <span>{result.snippet}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </form>
+        ) : null}
+
+        <div className="document-list" aria-busy={isLoading}>
+          {sortedDocuments.map((document) => (
+            <div className="document-entry" key={document.id}>
+              <div
+                className={`document-item ${document.id === activeDocumentId ? "active" : ""}`}
+                onClick={() => handleItemClick(document.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleItemClick(document.id);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <FileText size={20} />
+                {renamingId === document.id ? (
+                  <span
+                    className="rename-row"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="text"
+                      value={renameValue}
+                      autoFocus
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitRename(document.id);
+                        if (event.key === "Escape") cancelRename();
+                      }}
+                      onBlur={() => commitRename(document.id)}
+                      aria-label="New document name"
+                    />
+                  </span>
+                ) : (
+                  <span>
+                    <strong>{document.filename}</strong>
+                    <small>
+                      {formatType(document.contentType)} · {formatBytes(document.size)} · {formatDate(document.uploadTime)}
+                    </small>
+                  </span>
+                )}
+                <em className={document.status}>{document.status}</em>
+              </div>
+              {expandedId === document.id && renamingId !== document.id ? (
+                <div className="document-item-inline-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => startRename(document)}
+                  >
+                    <Pencil size={15} />
+                    Rename
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={() => onDownload(document.id, document.filename)}
+                  >
+                    <Download size={15} />
+                    Download
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={() => onReindex(document.id)}
+                    title="Re-extract and re-index this document with the AI service"
+                  >
+                    <RefreshCw size={15} />
+                    Reindex
+                  </button>
+                  <button className="danger-button" onClick={() => handleDeleteClick(document.id)}>
+                    <Trash2 size={15} />
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
-      ) : null}
-
-      <div className="document-list" aria-busy={isLoading}>
-        {documents.map((document) => (
-          <div
-            key={document.id}
-            className={`document-item ${document.id === activeDocumentId ? "active" : ""}`}
-            onClick={() => onSelect(document.id)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onSelect(document.id);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-          >
-            <FileText size={20} />
-            {renamingId === document.id ? (
-              <span
-                className="rename-row"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <input
-                  type="text"
-                  value={renameValue}
-                  autoFocus
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") commitRename(document.id);
-                    if (event.key === "Escape") cancelRename();
-                  }}
-                  onBlur={() => commitRename(document.id)}
-                  aria-label="New document name"
-                />
-              </span>
-            ) : (
-              <span>
-                <strong>{document.filename}</strong>
-                <small>
-                  {formatType(document.contentType)} · {formatBytes(document.size)} · {formatDate(document.uploadTime)}
-                </small>
-              </span>
-            )}
-            <em className={document.status}>{document.status}</em>
-            {renamingId !== document.id ? (
-              <span
-                className="document-item-actions"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  className="icon-button"
-                  title="Rename document"
-                  aria-label={`Rename ${document.filename}`}
-                  onClick={() => startRename(document)}
-                >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title="Download document"
-                  aria-label={`Download ${document.filename}`}
-                  onClick={() => onDownload(document.id, document.filename)}
-                >
-                  <Download size={15} />
-                </button>
-              </span>
-            ) : null}
-          </div>
-        ))}
-      </div>
-
-      {activeDocumentId ? (
-        <div className="document-actions-row">
+        {!isPanelOpen ? (
           <button
-            className="secondary-button"
-            onClick={() => {
-              const document = documents.find((item) => item.id === activeDocumentId);
-              if (document) startRename(document);
-            }}
+            className="sidebar-expand"
+            title="Show sidebar"
+            aria-label="Show sidebar"
+            onClick={() => setIsPanelOpen(true)}
           >
-            <Pencil size={17} />
-            Rename
+            <PanelLeftOpen size={18} />
           </button>
-          <button
-            className="secondary-button"
-            onClick={() => {
-              const document = documents.find((item) => item.id === activeDocumentId);
-              if (document) onDownload(document.id, document.filename);
-            }}
-          >
-            <Download size={17} />
-            Download
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => onReindex(activeDocumentId)}
-            title="Re-extract and re-index this document with the AI service"
-          >
-            <RefreshCw size={17} />
-            Reindex
-          </button>
-          <button className="danger-button" onClick={() => onDelete(activeDocumentId)}>
-            <Trash2 size={17} />
-            Delete
-          </button>
-        </div>
-      ) : null}
+        ) : null}
     </aside>
   );
 }

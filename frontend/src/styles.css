@@ -2115,3 +2115,68 @@ select:focus {
   gap: 10px;
   margin-top: 16px;
 }
+
+/* ---------- Sidebar collapse / progressive disclosure ---------- */
+
+.workspace {
+  transition: grid-template-columns 0.25s ease;
+}
+
+.workspace:has(.document-panel.collapsed) {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.document-panel.collapsed {
+  min-width: 0;
+  padding: 0;
+  border-right: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.panel-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.document-entry {
+  display: grid;
+  gap: 8px;
+}
+
+.document-item-inline-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.document-item-inline-actions .secondary-button,
+.document-item-inline-actions .danger-button {
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+  gap: 6px;
+}
+
+.sidebar-expand {
+  position: fixed;
+  top: 50%;
+  left: 16px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  color: #223246;
+  background: #eef3f8;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  transform: translateY(-50%);
+}
+
+.sidebar-expand:hover {
+  background: #dfe8f1;
+}
