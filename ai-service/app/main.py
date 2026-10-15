@@ -10,6 +10,8 @@ from app import generation, indexing, rerank, retrieval
 from app.config import Settings
 from app.corpus import Bm25Corpus, CorpusChunk
 from app.models import (
+    CompleteRequest,
+    CompleteResponse,
     DeleteIndexResponse,
     GenerateRequest,
     GenerateResponse,
@@ -251,6 +253,24 @@ def _register_routes(app: FastAPI) -> None:
                 yield _sse_event("error", {"detail": f"Generation failed: {exc}"})
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.post("/complete", response_model=CompleteResponse)
+    def complete(request: CompleteRequest) -> CompleteResponse:
+        if app.state.openai is None:
+            raise HTTPException(status_code=503, detail="LLM API key is not configured")
+        try:
+            answer = generation.complete(
+                app.state.openai,
+                app.state.settings,
+                request.system,
+                request.prompt,
+                request.max_tokens,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Completion failed: {exc}") from exc
+        return CompleteResponse(answer=answer)
 
     @app.post("/search", response_model=SearchResponse)
     def search(request: SearchRequest) -> SearchResponse:

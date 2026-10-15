@@ -77,5 +77,15 @@ class GenerateResponse(BaseModel):
     answer: str
 
 
+class CompleteRequest(BaseModel):
+    system: str = Field(min_length=1, max_length=4000)
+    prompt: str = Field(min_length=1, max_length=8000)
+    max_tokens: int = Field(default=300, ge=16, le=2048)
+
+
+class CompleteResponse(BaseModel):
+    answer: str
+
+
 class HealthResponse(BaseModel):
     status: str

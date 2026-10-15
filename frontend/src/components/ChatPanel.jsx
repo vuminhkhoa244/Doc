@@ -12,6 +12,7 @@ import {
   Sparkles,
   FileText,
   Plus,
+  Wand2,
 } from "lucide-react";
 import MarkdownText from "./MarkdownText";
 import CopyButton from "./CopyButton";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const TOOL_OPTIONS = [
+  { id: "auto", label: "Auto (Agent)", icon: Wand2, description: "Let the agent pick the best tool" },
   { id: "rag", label: "RAG Search", icon: Search, description: "Search your documents" },
   { id: "web", label: "Web Search", icon: Globe, description: "Search the internet" },
   { id: "sql", label: "SQL Query", icon: Database, description: "Query structured data" },
@@ -53,7 +55,7 @@ export default function ChatPanel({
   onDeselectDocument,
   onUpload,
   activeDocumentIds = [],
-  selectedTool = "rag",
+  selectedTool = "auto",
   onToolChange,
   isGuest = false,
   onRequireAuth,

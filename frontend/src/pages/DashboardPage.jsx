@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const [isAsking, setIsAsking] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [selectedTool, setSelectedTool] = useState("rag");
+  const [selectedTool, setSelectedTool] = useState("auto");
   const [errorMessage, setErrorMessage] = useState("");
   const resumeChecked = useRef(false);
 

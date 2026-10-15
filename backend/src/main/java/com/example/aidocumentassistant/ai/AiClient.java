@@ -88,6 +88,15 @@ public class AiClient {
                 .body(GenerateResponse.class);
     }
 
+    public CompleteResponse complete(CompleteRequest request) {
+        return restClient.post()
+                .uri("/complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .body(CompleteResponse.class);
+    }
+
     public StreamResult queryStream(QueryRequest request, Consumer<String> tokenConsumer) {
         return stream("/query_stream", request, tokenConsumer);
     }
@@ -180,6 +189,12 @@ public class AiClient {
     }
 
     public record GenerateResponse(String answer) {
+    }
+
+    public record CompleteRequest(String system, String prompt, int maxTokens) {
+    }
+
+    public record CompleteResponse(String answer) {
     }
 
     public record SourcePayload(long documentId, String filename, int page) {

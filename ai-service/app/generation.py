@@ -188,3 +188,24 @@ def stream_from_context(
             yield delta
     if not produced:
         yield NO_WEB_ANSWER
+
+
+def complete(
+    openai_client,
+    settings: Settings,
+    system: str,
+    prompt: str,
+    max_tokens: int = 300,
+) -> str:
+    """Neutral single-turn completion with a caller-supplied system prompt."""
+    response = openai_client.chat.completions.create(
+        model=settings.chat_model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.0,
+        max_tokens=max_tokens,
+        **settings.reasoning_extra(),
+    )
+    return (response.choices[0].message.content or "").strip()
