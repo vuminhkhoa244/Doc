@@ -13,10 +13,16 @@ import java.util.Locale;
 public class DocumentTextExtractor {
     private final PdfTextExtractor pdfTextExtractor;
     private final DocxTextExtractor docxTextExtractor;
+    private final ImageTextExtractor imageTextExtractor;
 
-    public DocumentTextExtractor(PdfTextExtractor pdfTextExtractor, DocxTextExtractor docxTextExtractor) {
+    public DocumentTextExtractor(
+            PdfTextExtractor pdfTextExtractor,
+            DocxTextExtractor docxTextExtractor,
+            ImageTextExtractor imageTextExtractor
+    ) {
         this.pdfTextExtractor = pdfTextExtractor;
         this.docxTextExtractor = docxTextExtractor;
+        this.imageTextExtractor = imageTextExtractor;
     }
 
     public List<ExtractedText> extract(Path path, String filename, String contentType) throws IOException {
@@ -24,6 +30,7 @@ public class DocumentTextExtractor {
         return switch (type) {
             case PDF -> pdfTextExtractor.extract(path);
             case DOCX -> docxTextExtractor.extract(path);
+            case IMAGE -> imageTextExtractor.extract(path);
             case MARKDOWN, TEXT -> extractPlainText(path);
         };
     }
@@ -41,7 +48,8 @@ public class DocumentTextExtractor {
         PDF,
         DOCX,
         MARKDOWN,
-        TEXT;
+        TEXT,
+        IMAGE;
 
         public static DocumentType from(String filename, String contentType) {
             String lowerFilename = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
@@ -59,6 +67,11 @@ public class DocumentTextExtractor {
             }
             if (lowerFilename.endsWith(".txt") || lowerContentType.startsWith("text/plain")) {
                 return TEXT;
+            }
+            if (lowerFilename.endsWith(".jpg") || lowerFilename.endsWith(".jpeg") || lowerFilename.endsWith(".png")
+                    || lowerFilename.endsWith(".tif") || lowerFilename.endsWith(".tiff") || lowerFilename.endsWith(".bmp")
+                    || lowerContentType.startsWith("image/")) {
+                return IMAGE;
             }
             throw new IllegalArgumentException("Unsupported document type");
         }

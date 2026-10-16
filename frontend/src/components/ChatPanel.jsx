@@ -41,6 +41,7 @@ function getFileTag(filename = "") {
   if (ext === "docx") return "tag-docx";
   if (ext === "md" || ext === "markdown") return "tag-md";
   if (ext === "txt") return "tag-txt";
+  if (["jpg", "jpeg", "png", "tif", "tiff", "bmp"].includes(ext)) return "tag-img";
   return "tag-file";
 }
 
@@ -343,7 +344,7 @@ export default function ChatPanel({
         <input
           ref={chatFileRef}
           type="file"
-          accept=".pdf,.docx,.md,.markdown,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
+          accept=".pdf,.docx,.md,.markdown,.txt,.jpg,.jpeg,.png,.tif,.tiff,.bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain,image/png,image/jpeg,image/tiff,image/bmp"
           className="hidden-input"
           onChange={handleChatFileChange}
         />

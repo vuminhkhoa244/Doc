@@ -158,7 +158,7 @@ public class DocumentService {
                     documentTextExtractor.extract(storagePath, document.getFilename(), document.getContentType())
             );
             if (splitChunks.isEmpty()) {
-                document.markFailed("No extractable text found in document (scanned PDFs require Tesseract OCR)");
+                document.markFailed("No extractable text found in document (scanned PDFs and images require Tesseract OCR)");
                 return;
             }
 
@@ -194,7 +194,7 @@ public class DocumentService {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Only PDF, DOCX, Markdown, and TXT uploads are supported"
+                    "Only PDF, DOCX, Markdown, TXT, and image (JPG/PNG/TIFF/BMP) uploads are supported"
             );
         }
     }
@@ -203,12 +203,32 @@ public class DocumentService {
         if (file.getContentType() != null && !file.getContentType().isBlank()) {
             return file.getContentType();
         }
-        return switch (DocumentTextExtractor.DocumentType.from(file.getOriginalFilename(), file.getContentType())) {
+        DocumentTextExtractor.DocumentType type =
+                DocumentTextExtractor.DocumentType.from(file.getOriginalFilename(), file.getContentType());
+        return switch (type) {
             case PDF -> "application/pdf";
             case DOCX -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             case MARKDOWN -> "text/markdown";
             case TEXT -> "text/plain";
+            case IMAGE -> imageContentType(file.getOriginalFilename());
         };
+    }
+
+    private String imageContentType(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lower.endsWith(".tif") || lower.endsWith(".tiff")) {
+            return "image/tiff";
+        }
+        if (lower.endsWith(".bmp")) {
+            return "image/bmp";
+        }
+        return "application/octet-stream";
     }
 
     private String sanitizeFilename(String filename) {

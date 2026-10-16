@@ -22,7 +22,7 @@ import ChatPanel from "../components/ChatPanel.jsx";
 const WELCOME_MESSAGE = {
   id: "welcome",
   role: "assistant",
-  content: "Upload a PDF, DOCX, Markdown, or TXT file, wait for indexing, then ask a question about your documents.",
+  content: "Upload a PDF, DOCX, Markdown, TXT, or image file, wait for indexing, then ask a question about your documents.",
   sources: [],
 };
 

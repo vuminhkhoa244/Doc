@@ -2386,6 +2386,7 @@ select:focus {
 .tag-docx { color: #1d4ed8; }
 .tag-md { color: #7c3aed; }
 .tag-txt { color: #526173; }
+.tag-img { color: #0d9488; }
 .tag-file { color: #526173; }
 
 .active-doc-tag-close {

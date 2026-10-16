@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const ACCEPTED_DROP_FILE = /\.(pdf|docx|md|markdown|txt)$/i;
+const ACCEPTED_DROP_FILE = /\.(pdf|docx|md|markdown|txt|jpg|jpeg|png|tif|tiff|bmp)$/i;
 
 function formatBytes(bytes) {
   if (!bytes) return "0 KB";
@@ -42,6 +42,7 @@ function formatType(contentType = "") {
   if (contentType.includes("wordprocessingml")) return "DOCX";
   if (contentType.includes("markdown")) return "Markdown";
   if (contentType.includes("plain")) return "TXT";
+  if (contentType.startsWith("image/")) return "IMG";
   return "File";
 }
 
@@ -124,7 +125,7 @@ export default function DocumentPanel({
     const files = Array.from(event.dataTransfer?.files ?? []);
     const file = files.find((candidate) => ACCEPTED_DROP_FILE.test(candidate.name));
     if (!file) {
-      setDropError("Only PDF, DOCX, Markdown, and TXT files can be uploaded.");
+      setDropError("Only PDF, DOCX, Markdown, TXT, and image (JPG/PNG/TIFF/BMP) files can be uploaded.");
       return;
     }
     setDropError("");
@@ -198,7 +199,7 @@ export default function DocumentPanel({
           <div className="drop-overlay" aria-hidden="true">
             <Upload size={28} />
             <p>Drop your document here</p>
-            <small>PDF, DOCX, Markdown, or TXT</small>
+            <small>PDF, DOCX, Markdown, TXT, or image</small>
           </div>
         ) : null}
         <div className="panel-heading">
@@ -236,7 +237,7 @@ export default function DocumentPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.md,.markdown,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain"
+              accept=".pdf,.docx,.md,.markdown,.txt,.jpg,.jpeg,.png,.tif,.tiff,.bmp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/markdown,text/plain,image/png,image/jpeg,image/tiff,image/bmp"
             className="hidden-input"
             onChange={handleFileChange}
           />
@@ -285,6 +286,7 @@ export default function DocumentPanel({
                 <option value="wordprocessingml">DOCX</option>
                 <option value="markdown">Markdown</option>
                 <option value="plain">TXT</option>
+                <option value="image">Image</option>
               </select>
             </div>
             <div className="filter-row">
