@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import MarkdownText from "@/components/MarkdownText.jsx";
 
 const ACCEPTED_DROP_FILE = /\.(pdf|docx|md|markdown|txt|jpg|jpeg|png|tif|tiff|bmp)$/i;
 
@@ -58,6 +59,11 @@ export default function DocumentPanel({
   onSearch,
   searchResults,
   isSearching,
+  extractedTables = [],
+  extractedImages = [],
+  isExtractedLoading = false,
+  imageSearchResults = [],
+  onSearchImages,
   isLoading,
   isGuest = false,
   onRequireAuth,
@@ -70,6 +76,7 @@ export default function DocumentPanel({
   const [query, setQuery] = useState("");
   const [contentType, setContentType] = useState("");
   const [scope, setScope] = useState("all");
+  const [searchMode, setSearchMode] = useState("text");
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -153,6 +160,10 @@ export default function DocumentPanel({
     if (!query.trim()) return;
     if (isGuest) {
       onRequireAuth?.();
+      return;
+    }
+    if (searchMode === "images") {
+      await onSearchImages?.(query.trim());
       return;
     }
     await onSearch({
@@ -267,29 +278,22 @@ export default function DocumentPanel({
               </button>
             </div>
             <div className="filter-row">
-              <select
-                value={scope}
-                onChange={(event) => setScope(event.target.value)}
-                aria-label="Search scope"
-                disabled={!activeDocumentId}
-              >
-                <option value="all">All documents</option>
-                <option value="selected">Selected document</option>
-              </select>
-              <select
-                value={contentType}
-                onChange={(event) => setContentType(event.target.value)}
-                aria-label="File type filter"
-              >
-                <option value="">Any type</option>
-                <option value="pdf">PDF</option>
-                <option value="wordprocessingml">DOCX</option>
-                <option value="markdown">Markdown</option>
-                <option value="plain">TXT</option>
-                <option value="image">Image</option>
-              </select>
-            </div>
-            <div className="filter-row">
+              <div className="search-mode-toggle" role="group" aria-label="Search mode">
+                <button
+                  type="button"
+                  className={searchMode === "text" ? "active" : ""}
+                  onClick={() => setSearchMode("text")}
+                >
+                  Text
+                </button>
+                <button
+                  type="button"
+                  className={searchMode === "images" ? "active" : ""}
+                  onClick={() => setSearchMode("images")}
+                >
+                  Images
+                </button>
+              </div>
               <select
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value)}
@@ -300,7 +304,57 @@ export default function DocumentPanel({
                 <option value="name">Name A–Z</option>
               </select>
             </div>
-            {searchResults.length ? (
+            {searchMode === "text" ? (
+              <div className="filter-row">
+                <select
+                  value={scope}
+                  onChange={(event) => setScope(event.target.value)}
+                  aria-label="Search scope"
+                  disabled={!activeDocumentId}
+                >
+                  <option value="all">All documents</option>
+                  <option value="selected">Selected document</option>
+                </select>
+                <select
+                  value={contentType}
+                  onChange={(event) => setContentType(event.target.value)}
+                  aria-label="File type filter"
+                >
+                  <option value="">Any type</option>
+                  <option value="pdf">PDF</option>
+                  <option value="wordprocessingml">DOCX</option>
+                  <option value="markdown">Markdown</option>
+                  <option value="plain">TXT</option>
+                  <option value="image">Image</option>
+                </select>
+              </div>
+            ) : null}
+            {searchMode === "images" ? (
+              imageSearchResults.length ? (
+                <div className="image-search-results">
+                  {imageSearchResults.map((image) => (
+                    <button
+                      type="button"
+                      key={image.id}
+                      className="image-thumb"
+                      onClick={() => image.url && window.open(image.url, "_blank")}
+                      title={image.snippet || `${image.filename}, page ${image.page}`}
+                    >
+                      {image.url ? (
+                        <img src={image.url} alt={`${image.filename}, page ${image.page}`} />
+                      ) : (
+                        <span className="image-thumb-fallback">IMG</span>
+                      )}
+                      <small>
+                        {image.filename} · p.{image.page}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-hint">No images matched. Try another keyword.</p>
+              )
+            ) : searchResults.length ? (
               <div className="search-results">
                 {searchResults.map((result) => (
                   <button
@@ -318,6 +372,48 @@ export default function DocumentPanel({
               </div>
             ) : null}
           </form>
+        ) : null}
+
+        {activeDocumentId ? (
+          <div className="extracted-section">
+            <p className="eyebrow">Extracted content</p>
+            {isExtractedLoading ? <p className="panel-hint">Loading tables and images…</p> : null}
+            {extractedTables.length ? (
+              <div className="table-cards">
+                {extractedTables.map((table) => (
+                  <details className="table-card" key={table.id}>
+                    <summary>
+                      Table · page {table.page} · {table.rowCount} rows
+                    </summary>
+                    <MarkdownText>{table.markdown}</MarkdownText>
+                  </details>
+                ))}
+              </div>
+            ) : null}
+            {extractedImages.length ? (
+              <div className="image-grid">
+                {extractedImages.map((image) => (
+                  <button
+                    type="button"
+                    key={image.id}
+                    className="image-thumb"
+                    onClick={() => image.url && window.open(image.url, "_blank")}
+                    title={image.snippet || `Page ${image.page}`}
+                  >
+                    {image.url ? (
+                      <img src={image.url} alt={`${image.filename}, page ${image.page}`} />
+                    ) : (
+                      <span className="image-thumb-fallback">IMG</span>
+                    )}
+                    <small>p.{image.page}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {!isExtractedLoading && !extractedTables.length && !extractedImages.length ? (
+              <p className="panel-hint">No tables or images extracted from this document.</p>
+            ) : null}
+          </div>
         ) : null}
 
         <div className="document-list" aria-busy={isLoading}>

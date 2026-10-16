@@ -45,4 +45,12 @@ public final class DocumentDtos {
             );
         }
     }
+
+    public record TableResponse(
+            Long id,
+            int page,
+            int rowCount,
+            String markdown
+    ) {
+    }
 }

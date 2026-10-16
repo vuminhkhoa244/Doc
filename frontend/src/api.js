@@ -275,6 +275,27 @@ export async function getPageChunks(documentId, page) {
   return request(`/api/documents/${documentId}/chunks?page=${page}`);
 }
 
+export async function getDocumentTables(documentId) {
+  return request(`/api/documents/${documentId}/tables`);
+}
+
+export async function searchImages({ query = "", documentId, limit = 12 } = {}) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  if (documentId) params.set("documentId", String(documentId));
+  return request(`/api/images/search?${params.toString()}`);
+}
+
+export async function fetchImageObjectUrl(imageId) {
+  const token = window.localStorage.getItem("accessToken");
+  const response = await fetch(`${API_BASE_URL}/api/images/${imageId}/content`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error(`Image load failed with ${response.status}`);
+  }
+  return window.URL.createObjectURL(await response.blob());
+}
+
 export async function listConversationHistory() {
   return request("/api/chat/history");
 }

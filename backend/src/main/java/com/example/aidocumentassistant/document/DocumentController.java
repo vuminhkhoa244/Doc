@@ -91,6 +91,14 @@ public class DocumentController {
         return documentService.pageChunks(principal, id, page);
     }
 
+    @GetMapping("/{id}/tables")
+    public List<DocumentDtos.TableResponse> tables(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @PathVariable Long id
+    ) {
+        return documentService.tables(principal, id);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@AuthenticationPrincipal AuthenticatedUser principal, @PathVariable Long id) {

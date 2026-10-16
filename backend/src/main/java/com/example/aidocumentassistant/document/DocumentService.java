@@ -21,29 +21,43 @@ import java.util.UUID;
 
 @Service
 public class DocumentService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DocumentService.class);
+
     private final DocumentRepository documents;
     private final DocumentChunkRepository chunks;
+    private final ExtractedTableRepository extractedTables;
+    private final ImageAssetRepository imageAssets;
     private final UserRepository users;
     private final AppProperties properties;
     private final DocumentTextExtractor documentTextExtractor;
     private final TextChunker textChunker;
+    private final TableExtractor tableExtractor;
+    private final ImageAssetExtractor imageAssetExtractor;
     private final AiClient aiClient;
 
     public DocumentService(
             DocumentRepository documents,
             DocumentChunkRepository chunks,
+            ExtractedTableRepository extractedTables,
+            ImageAssetRepository imageAssets,
             UserRepository users,
             AppProperties properties,
             DocumentTextExtractor documentTextExtractor,
             TextChunker textChunker,
+            TableExtractor tableExtractor,
+            ImageAssetExtractor imageAssetExtractor,
             AiClient aiClient
     ) {
         this.documents = documents;
         this.chunks = chunks;
+        this.extractedTables = extractedTables;
+        this.imageAssets = imageAssets;
         this.users = users;
         this.properties = properties;
         this.documentTextExtractor = documentTextExtractor;
         this.textChunker = textChunker;
+        this.tableExtractor = tableExtractor;
+        this.imageAssetExtractor = imageAssetExtractor;
         this.aiClient = aiClient;
     }
 
@@ -85,6 +99,7 @@ public class DocumentService {
     public void delete(AuthenticatedUser principal, Long id) {
         Document document = documents.findByIdAndOwnerId(id, principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        deleteExtractedArtifacts(document);
         documents.delete(document);
         try {
             Files.deleteIfExists(Path.of(document.getStoragePath()));
@@ -101,6 +116,7 @@ public class DocumentService {
         Document document = documents.findByIdAndOwnerId(id, principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
         chunks.deleteAllByDocument(document);
+        deleteExtractedArtifacts(document);
         try {
             aiClient.deleteIndex(id);
         } catch (RestClientException ignored) {
@@ -148,39 +164,99 @@ public class DocumentService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<DocumentDtos.TableResponse> tables(AuthenticatedUser principal, Long id) {
+        Document document = documents.findByIdAndOwnerId(id, principal.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        return extractedTables.findByDocumentIdOrderByPageAsc(document.getId())
+                .stream()
+                .map(table -> new DocumentDtos.TableResponse(
+                        table.getId(), table.getPage(), table.getRowCount(), table.getMarkdown()))
+                .toList();
+    }
+
     public record DocumentFile(String filename, String contentType, Path path) {
+    }
+
+    private void deleteExtractedArtifacts(Document document) {
+        for (ImageAsset asset : imageAssets.findByDocumentIdOrderByPageAsc(document.getId())) {
+            try {
+                Files.deleteIfExists(Path.of(asset.getStoragePath()));
+            } catch (IOException ignored) {
+            }
+        }
+        imageAssets.deleteAllByDocument(document);
+        extractedTables.deleteAllByDocument(document);
     }
 
     private void index(Document document, Path storagePath) {
         int savedChunks = 0;
         try {
-            List<TextChunker.ChunkText> splitChunks = textChunker.split(
-                    documentTextExtractor.extract(storagePath, document.getFilename(), document.getContentType())
-            );
-            if (splitChunks.isEmpty()) {
+            List<ExtractedText> extracted = documentTextExtractor.extract(
+                    storagePath, document.getFilename(), document.getContentType());
+            List<TextChunker.ChunkText> textChunks = textChunker.split(extracted);
+
+            List<TextChunker.ChunkText> allChunks = new java.util.ArrayList<>(textChunks);
+            for (TableExtractor.TableData table : tableExtractor.extract(
+                    storagePath, document.getFilename(), document.getContentType())) {
+                extractedTables.save(new ExtractedTable(document, table.page(), table.markdown(), table.rowCount()));
+                allChunks.addAll(textChunker.split(List.of(new ExtractedText(
+                        table.page(), "Table (page " + table.page() + "):\n" + table.markdown()))));
+            }
+
+            saveImageAssets(document, storagePath, extracted);
+
+            if (allChunks.isEmpty()) {
                 document.markFailed("No extractable text found in document (scanned PDFs and images require Tesseract OCR)");
                 return;
             }
 
             List<AiClient.ChunkPayload> payloads = new java.util.ArrayList<>();
             int index = 0;
-            for (TextChunker.ChunkText splitChunk : splitChunks) {
+            for (TextChunker.ChunkText splitChunk : allChunks) {
                 chunks.save(new DocumentChunk(document, index, splitChunk.page(), splitChunk.text()));
                 payloads.add(new AiClient.ChunkPayload(index, splitChunk.page(), splitChunk.text()));
                 index++;
             }
-            savedChunks = splitChunks.size();
+            savedChunks = allChunks.size();
             aiClient.index(new AiClient.IndexRequest(
                     document.getId(),
                     document.getFilename(),
                     document.getContentType(),
                     payloads
             ));
-            document.markIndexed(splitChunks.size());
+            document.markIndexed(allChunks.size());
         } catch (RestClientException exception) {
             document.markIndexedWithoutVectors(savedChunks);
         } catch (Exception exception) {
+            log.warn("Indexing failed for {}: {}", document.getFilename(), exception.getMessage());
             document.markFailed("Unable to index document");
+        }
+    }
+
+    private void saveImageAssets(Document document, Path storagePath, List<ExtractedText> extracted) {
+        try {
+            Path assetsDir = properties.storage().uploadDir().resolve("assets");
+            List<ImageAsset> assets;
+            DocumentTextExtractor.DocumentType type =
+                    DocumentTextExtractor.DocumentType.from(document.getFilename(), document.getContentType());
+            if (type == DocumentTextExtractor.DocumentType.PDF) {
+                assets = imageAssetExtractor.extractFromPdf(document, storagePath, assetsDir);
+            } else if (type == DocumentTextExtractor.DocumentType.IMAGE) {
+                String ocrText = extracted.stream()
+                        .filter(page -> page.page() == 1)
+                        .map(ExtractedText::text)
+                        .findFirst()
+                        .orElse("");
+                assets = imageAssetExtractor.fromStandaloneUpload(document, storagePath, assetsDir, ocrText);
+            } else {
+                assets = List.of();
+            }
+            for (ImageAsset asset : assets) {
+                imageAssets.save(asset);
+            }
+        } catch (Exception exception) {
+            log.warn("Image asset extraction failed for {}: {}", document.getFilename(), exception.getMessage());
         }
     }
 

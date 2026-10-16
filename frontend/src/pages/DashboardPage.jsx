@@ -6,12 +6,15 @@ import {
   deleteConversation as deleteConversationApi,
   deleteDocument,
   downloadDocument,
+  fetchImageObjectUrl,
   getConversation,
+  getDocumentTables,
   listConversations,
   listDocuments,
   reindexDocument,
   renameDocument,
   searchDocuments,
+  searchImages,
   uploadDocument,
 } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
@@ -69,9 +72,14 @@ export default function DashboardPage() {
   const [isAsking, setIsAsking] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [extractedTables, setExtractedTables] = useState([]);
+  const [extractedImages, setExtractedImages] = useState([]);
+  const [imageSearchResults, setImageSearchResults] = useState([]);
+  const [isExtractedLoading, setIsExtractedLoading] = useState(false);
   const [selectedTool, setSelectedTool] = useState("auto");
   const [errorMessage, setErrorMessage] = useState("");
   const resumeChecked = useRef(false);
+  const imageUrlsRef = useRef(new Map());
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages ?? (user ? [WELCOME_MESSAGE] : [GUEST_WELCOME_MESSAGE]);
@@ -94,6 +102,9 @@ export default function DashboardPage() {
       setActiveDocumentId("");
       setActiveDocumentIds([]);
       setSearchResults([]);
+      setExtractedTables([]);
+      setExtractedImages([]);
+      setImageSearchResults([]);
       return undefined;
     }
     let isMounted = true;
@@ -152,6 +163,55 @@ export default function DashboardPage() {
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [hasPendingIndexing]);
+
+  async function loadImageUrls(items) {
+    const withUrls = [];
+    for (const item of items) {
+      let url = imageUrlsRef.current.get(item.id) ?? null;
+      if (!url) {
+        try {
+          url = await fetchImageObjectUrl(item.id);
+          imageUrlsRef.current.set(item.id, url);
+        } catch {
+          url = null;
+        }
+      }
+      withUrls.push({ ...item, url });
+    }
+    return withUrls;
+  }
+
+  // Load extracted tables + images for the active document
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    if (!activeDocumentId) {
+      setExtractedTables([]);
+      setExtractedImages([]);
+      return undefined;
+    }
+    setIsExtractedLoading(true);
+    getDocumentTables(activeDocumentId)
+      .then((tables) => { if (!cancelled) setExtractedTables(tables); })
+      .catch(() => { if (!cancelled) setExtractedTables([]); });
+    searchImages({ documentId: activeDocumentId, limit: 12 })
+      .then(async (images) => {
+        const withUrls = await loadImageUrls(images);
+        if (!cancelled) setExtractedImages(withUrls);
+      })
+      .catch(() => { if (!cancelled) setExtractedImages([]); })
+      .finally(() => { if (!cancelled) setIsExtractedLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeDocumentId, user?.id, hasPendingIndexing]);
+
+  // Revoke object URLs on unmount
+  useEffect(() => {
+    const urls = imageUrlsRef.current;
+    return () => {
+      urls.forEach((url) => window.URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, []);
 
   function requireAuth(action = null) {
     openAuth("login", action);
@@ -407,6 +467,21 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleSearchImages(query) {
+    if (!user) return requireAuth();
+    setErrorMessage("");
+    setIsSearching(true);
+    try {
+      const results = await searchImages({ query, limit: 24 });
+      setImageSearchResults(await loadImageUrls(results));
+    } catch (error) {
+      setErrorMessage(error.message);
+      setImageSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <TopBar
@@ -466,6 +541,11 @@ export default function DashboardPage() {
           onSearch={handleSearch}
           searchResults={searchResults}
           isSearching={isSearching}
+          extractedTables={extractedTables}
+          extractedImages={extractedImages}
+          isExtractedLoading={isExtractedLoading}
+          imageSearchResults={imageSearchResults}
+          onSearchImages={handleSearchImages}
           isLoading={isLoadingDocuments}
           onRefresh={refreshDocuments}
           isGuest={!user}

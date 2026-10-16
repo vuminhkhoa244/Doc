@@ -31,7 +31,8 @@ class PdfTextExtractorTest {
                 null,
                 null,
                 null,
-                new AppProperties.Ocr(ocrEnabled, "/nonexistent-tessdata", "vie+eng", 300, 50, 10)
+                new AppProperties.Ocr(ocrEnabled, "/nonexistent-tessdata", "vie+eng", 300, 50, 10),
+                null
         );
     }
 
@@ -153,7 +154,8 @@ class PdfTextExtractorTest {
         StubOcr ocr = new StubOcr(true, "OCR text for the scanned page.");
         AppProperties properties = new AppProperties(
                 null, null, null, null, null,
-                new AppProperties.Ocr(true, "/nonexistent", "vie+eng", 300, 2, 10)
+                new AppProperties.Ocr(true, "/nonexistent", "vie+eng", 300, 2, 10),
+                null
         );
         PdfTextExtractor extractor = new PdfTextExtractor(ocr, properties);
 

@@ -13,7 +13,8 @@ public record AppProperties(
         Storage storage,
         Ai ai,
         WebSearch webSearch,
-        Ocr ocr
+        Ocr ocr,
+        Images images
 ) {
     public record Jwt(String secret, long accessTokenMinutes, long refreshTokenDays) {
         public Duration accessTokenTtl() {
@@ -38,5 +39,8 @@ public record AppProperties(
     }
 
     public record Ocr(boolean enabled, String tessdataDir, String language, int dpi, int maxPages, int sparseMinChars) {
+    }
+
+    public record Images(boolean enabled, int minPixelSize, int maxPerDocument) {
     }
 }

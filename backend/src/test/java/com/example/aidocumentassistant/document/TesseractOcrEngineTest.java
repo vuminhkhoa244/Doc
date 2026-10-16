@@ -17,7 +17,8 @@ class TesseractOcrEngineTest {
                 null,
                 null,
                 null,
-                new AppProperties.Ocr(enabled, tessdataDir, "vie+eng", 300, 50, 10)
+                new AppProperties.Ocr(enabled, tessdataDir, "vie+eng", 300, 50, 10),
+                null
         );
     }
 
