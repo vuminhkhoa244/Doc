@@ -22,14 +22,11 @@ def embed_query(openai_client, settings: Settings, query: str) -> list[float]:
 
 def _vector_search(
     collection,
-    openai_client,
-    settings: Settings,
-    query: str,
+    query_embedding: list[float],
     document_ids: Optional[list[int]],
     pool: int,
 ) -> list[RetrievedChunk]:
     where = {"documentId": {"$in": document_ids}} if document_ids is not None else None
-    query_embedding = embed_query(openai_client, settings, query)
 
     result = collection.query(
         query_embeddings=[query_embedding],
@@ -119,6 +116,30 @@ def _fuse(
     ]
 
 
+def _hybrid_search(
+    collection,
+    settings: Settings,
+    query: str,
+    document_ids: Optional[list[int]],
+    pool: int,
+    corpus: Optional[Bm25Corpus],
+    query_embedding: Optional[list[float]],
+) -> list[RetrievedChunk]:
+    vector_candidates: list[RetrievedChunk] = []
+    if query_embedding is not None:
+        vector_candidates = _vector_search(collection, query_embedding, document_ids, pool)
+
+    bm25_candidates: list[RetrievedChunk] = []
+    if corpus is not None and len(corpus) > 0:
+        bm25_candidates = _bm25_search(corpus, query, document_ids, pool)
+
+    if not vector_candidates:
+        return bm25_candidates[:pool]
+    if not bm25_candidates:
+        return vector_candidates[:pool]
+    return _fuse([vector_candidates, bm25_candidates], settings.rrf_k, pool)
+
+
 def search_chunks(
     collection,
     openai_client,
@@ -127,7 +148,16 @@ def search_chunks(
     document_ids: Optional[list[int]],
     limit: int,
     corpus: Optional[Bm25Corpus] = None,
+    focus_ids: Optional[list[int]] = None,
 ) -> list[RetrievedChunk]:
+    """Hybrid retrieval with an optional focus/remainder pool split.
+
+    When focus_ids is given (chat document selection), the candidate pool is
+    built half from the focused docs and half from the whole document_ids
+    universe, so a relevant answer outside the focus still reaches the reranker
+    while focused docs keep guaranteed slots. focus_ids equal to the universe
+    (or omitted) degenerates to a single pass.
+    """
     if document_ids is not None and len(document_ids) == 0:
         return []
 
@@ -138,23 +168,26 @@ def search_chunks(
 
     pool = max(limit, settings.hybrid_pool)
 
-    vector_candidates: list[RetrievedChunk] = []
+    query_embedding: Optional[list[float]] = None
     if vector_count > 0:
         try:
-            vector_candidates = _vector_search(
-                collection, openai_client, settings, query, document_ids, pool
-            )
+            query_embedding = embed_query(openai_client, settings, query)
         except Exception:
             # Vector side is best-effort; BM25 still provides lexical recall.
-            vector_candidates = []
+            query_embedding = None
 
-    bm25_candidates: list[RetrievedChunk] = []
-    if corpus is not None and corpus_size > 0:
-        bm25_candidates = _bm25_search(corpus, query, document_ids, pool)
+    universe = _hybrid_search(collection, settings, query, document_ids, pool, corpus, query_embedding)
+    if not focus_ids or (document_ids is not None and set(focus_ids) == set(document_ids)):
+        return universe[:limit]
 
-    if not vector_candidates:
-        return bm25_candidates[:limit]
-    if not bm25_candidates:
-        return vector_candidates[:limit]
-
-    return _fuse([vector_candidates, bm25_candidates], settings.rrf_k, limit)
+    focused = _hybrid_search(collection, settings, query, list(focus_ids), pool, corpus, query_embedding)
+    half = max(1, limit // 2)
+    merged: list[RetrievedChunk] = []
+    seen: set[tuple[int, int]] = set()
+    for chunk in universe[:half] + focused[:half]:
+        key = (chunk.document_id, chunk.chunk_index)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(chunk)
+    return merged[:limit]

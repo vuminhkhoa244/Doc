@@ -34,6 +34,7 @@ class HistoryTurn(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     documentIds: Optional[list[int]] = None
+    focusDocumentIds: Optional[list[int]] = None
     history: Optional[list[HistoryTurn]] = None
 
 

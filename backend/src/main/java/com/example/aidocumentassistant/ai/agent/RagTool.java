@@ -80,22 +80,29 @@ public class RagTool implements Tool {
         }
     }
 
-    private List<Long> scopedDocumentIds(ToolContext context) {
-        List<Long> ownerDocumentIds = documents.findByOwnerIdOrderByUploadTimeDesc(context.userId())
+    private List<Long> ownerDocumentIds(ToolContext context) {
+        return documents.findByOwnerIdOrderByUploadTimeDesc(context.userId())
                 .stream()
                 .map(document -> document.getId())
                 .toList();
-        return (context.documentIds() == null || context.documentIds().isEmpty())
-                ? ownerDocumentIds
-                : context.documentIds().stream()
-                        .filter(ownerDocumentIds::contains)
-                        .toList();
+    }
+
+    private List<Long> focusDocumentIds(ToolContext context, List<Long> ownerIds) {
+        if (context.documentIds() == null || context.documentIds().isEmpty()) {
+            return null;
+        }
+        List<Long> focus = context.documentIds().stream()
+                .filter(ownerIds::contains)
+                .toList();
+        return focus.isEmpty() ? null : focus;
     }
 
     private ToolResult aiAnswer(ToolContext context) {
+        List<Long> ownerIds = ownerDocumentIds(context);
         AiClient.QueryResponse response = aiClient.query(new AiClient.QueryRequest(
                 context.question(),
-                scopedDocumentIds(context),
+                ownerIds,
+                focusDocumentIds(context, ownerIds),
                 context.history() == null ? List.of() : context.history()
         ));
 
@@ -108,9 +115,11 @@ public class RagTool implements Tool {
     }
 
     private ToolResult aiAnswerStreaming(ToolContext context, Consumer<String> tokenSink) {
+        List<Long> ownerIds = ownerDocumentIds(context);
         AiClient.StreamResult response = aiClient.queryStream(new AiClient.QueryRequest(
                 context.question(),
-                scopedDocumentIds(context),
+                ownerIds,
+                focusDocumentIds(context, ownerIds),
                 context.history() == null ? List.of() : context.history()
         ), tokenSink);
 
@@ -126,7 +135,7 @@ public class RagTool implements Tool {
         SemanticSearchService.SearchFilters filters = new SemanticSearchService.SearchFilters(
                 context.question(),
                 null,
-                context.documentIds(),
+                null,
                 null,
                 null,
                 null,

@@ -51,6 +51,7 @@ class AiClientLiveRoundTripTest {
         AiClient.QueryResponse response = client().query(new AiClient.QueryRequest(
                 "How many days of annual leave?",
                 List.of(),
+                null,
                 List.of()
         ));
 

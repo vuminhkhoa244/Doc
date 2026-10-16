@@ -182,7 +182,7 @@ public class AiClient {
     public record HistoryTurn(String question, String answer) {
     }
 
-    public record QueryRequest(String question, List<Long> documentIds, List<HistoryTurn> history) {
+    public record QueryRequest(String question, List<Long> documentIds, List<Long> focusDocumentIds, List<HistoryTurn> history) {
     }
 
     public record GenerateRequest(String question, String context, List<HistoryTurn> history) {

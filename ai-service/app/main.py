@@ -150,6 +150,7 @@ def _register_routes(app: FastAPI) -> None:
                 request.documentIds,
                 candidate_limit,
                 corpus=app.state.corpus,
+                focus_ids=request.focusDocumentIds,
             )
             chunks = rerank.rerank_chunks(
                 app.state.openai, settings, request.question, chunks
@@ -189,6 +190,7 @@ def _register_routes(app: FastAPI) -> None:
                     request.documentIds,
                     candidate_limit,
                     corpus=corpus,
+                    focus_ids=request.focusDocumentIds,
                 )
                 chunks = rerank.rerank_chunks(
                     openai_client, settings, request.question, chunks
