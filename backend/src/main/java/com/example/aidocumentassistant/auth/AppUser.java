@@ -21,8 +21,17 @@ public class AppUser {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String password;
+
+    @Column(nullable = true, unique = true)
+    private String googleId;
+
+    @Column(nullable = true)
+    private String displayName;
+
+    @Column(nullable = true)
+    private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -39,6 +48,14 @@ public class AppUser {
         this.password = password;
     }
 
+    public static AppUser googleUser(String email, String googleId, String displayName, String avatarUrl) {
+        AppUser user = new AppUser(email, null);
+        user.googleId = googleId;
+        user.displayName = displayName;
+        user.avatarUrl = avatarUrl;
+        return user;
+    }
+
     public Long getId() {
         return id;
     }
@@ -49,6 +66,30 @@ public class AppUser {
 
     public String getPassword() {
         return password;
+    }
+
+    public String getGoogleId() {
+        return googleId;
+    }
+
+    public void setGoogleId(String googleId) {
+        this.googleId = googleId;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
     public Role getRole() {

@@ -28,7 +28,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = "app.ai.base-url=http://localhost:1")
+@SpringBootTest(properties = {
+        "app.ai.base-url=http://localhost:1",
+        "spring.datasource.url=jdbc:h2:mem:upload-image;DB_CLOSE_DELAY=-1"
+})
 @AutoConfigureMockMvc
 class UploadImageDocumentTest {
 

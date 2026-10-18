@@ -36,7 +36,8 @@ class ImageAssetExtractorTest {
                 null,
                 null,
                 null,
-                new AppProperties.Images(enabled, minPixelSize, 30)
+                new AppProperties.Images(enabled, minPixelSize, 30),
+                null
         );
     }
 

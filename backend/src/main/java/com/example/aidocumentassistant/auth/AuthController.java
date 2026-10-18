@@ -1,6 +1,7 @@
 package com.example.aidocumentassistant.auth;
 
 import com.example.aidocumentassistant.security.AuthenticatedUser;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -20,11 +21,14 @@ public class AuthController {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final GoogleTokenVerifier googleTokenVerifier;
 
-    public AuthController(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthController(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService,
+                          GoogleTokenVerifier googleTokenVerifier) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.googleTokenVerifier = googleTokenVerifier;
     }
 
     @GetMapping("/me")
@@ -67,6 +71,42 @@ public class AuthController {
 
         AppUser user = users.findById(claims.userId())
                 .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+        return tokenResponse(user);
+    }
+
+    @PostMapping("/google")
+    public AuthDtos.AuthResponse googleLogin(@Valid @RequestBody AuthDtos.GoogleLoginRequest request) {
+        if (!googleTokenVerifier.enabled()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Google sign-in is not configured");
+        }
+
+        GoogleIdToken.Payload payload;
+        try {
+            payload = googleTokenVerifier.verify(request.idToken());
+        } catch (Exception exception) {
+            throw new BadCredentialsException("Invalid Google ID token");
+        }
+
+        String email = normalizeEmail(payload.getEmail());
+        String googleId = payload.getSubject();
+        String displayName = (String) payload.get("name");
+        String avatarUrl = (String) payload.get("picture");
+
+        AppUser user = users.findByEmailIgnoreCase(email)
+                .or(() -> users.findByGoogleId(googleId))
+                .orElseGet(() -> users.save(AppUser.googleUser(email, googleId, displayName, avatarUrl)));
+
+        if (user.getGoogleId() == null) {
+            user.setGoogleId(googleId);
+            if (user.getDisplayName() == null) {
+                user.setDisplayName(displayName);
+            }
+            if (user.getAvatarUrl() == null) {
+                user.setAvatarUrl(avatarUrl);
+            }
+            users.save(user);
+        }
+
         return tokenResponse(user);
     }
 

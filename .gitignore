@@ -1,6 +1,9 @@
 # Secrets / local env
 .env
 **/.env
+google_client.json
+*.pem
+*.key
 
 # Node
 node_modules/

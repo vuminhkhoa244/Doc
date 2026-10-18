@@ -32,6 +32,7 @@ class PdfTextExtractorTest {
                 null,
                 null,
                 new AppProperties.Ocr(ocrEnabled, "/nonexistent-tessdata", "vie+eng", 300, 50, 10),
+                null,
                 null
         );
     }
@@ -155,6 +156,7 @@ class PdfTextExtractorTest {
         AppProperties properties = new AppProperties(
                 null, null, null, null, null,
                 new AppProperties.Ocr(true, "/nonexistent", "vie+eng", 300, 2, 10),
+                null,
                 null
         );
         PdfTextExtractor extractor = new PdfTextExtractor(ocr, properties);

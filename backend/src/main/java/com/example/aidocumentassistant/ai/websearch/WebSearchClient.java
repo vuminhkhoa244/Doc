@@ -20,6 +20,11 @@ public class WebSearchClient {
 
     public WebSearchClient(AppProperties properties) {
         AppProperties.WebSearch config = properties.webSearch();
+        if (config == null || config.baseUrl() == null || config.baseUrl().isBlank()) {
+            this.restClient = null;
+            this.maxResults = 0;
+            return;
+        }
         this.maxResults = config.maxResults();
         HttpClient httpClient = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
@@ -35,6 +40,9 @@ public class WebSearchClient {
     }
 
     public List<WebResult> search(String query) {
+        if (restClient == null) {
+            return List.of();
+        }
         SearxResponse raw = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/search")

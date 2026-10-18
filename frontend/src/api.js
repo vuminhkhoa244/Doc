@@ -92,6 +92,15 @@ export async function register({ email, password }) {
   return result;
 }
 
+export async function loginWithGoogle({ idToken }) {
+  const result = await request("/api/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+  storeSession(result);
+  return result;
+}
+
 export async function listDocuments() {
   const documents = await request("/api/documents");
   return documents.map(normalizeDocument);

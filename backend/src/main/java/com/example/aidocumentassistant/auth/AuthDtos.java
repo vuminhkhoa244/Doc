@@ -17,9 +17,12 @@ public final class AuthDtos {
     public record RefreshRequest(@NotBlank String refreshToken) {
     }
 
-    public record UserResponse(Long id, String email, Role role) {
+    public record GoogleLoginRequest(@NotBlank String idToken) {
+    }
+
+    public record UserResponse(Long id, String email, Role role, String displayName, String avatarUrl) {
         public static UserResponse from(AppUser user) {
-            return new UserResponse(user.getId(), user.getEmail(), user.getRole());
+            return new UserResponse(user.getId(), user.getEmail(), user.getRole(), user.getDisplayName(), user.getAvatarUrl());
         }
     }
 

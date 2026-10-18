@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { clearSession, getCurrentUser, login as loginApi, register as registerApi } from "./api.js";
+import { clearSession, getCurrentUser, login as loginApi, loginWithGoogle as loginWithGoogleApi, register as registerApi } from "./api.js";
 
 const AuthContext = createContext(null);
 
@@ -57,6 +57,15 @@ export function AuthProvider({ children }) {
     return result.user;
   }, []);
 
+  const loginWithGoogle = useCallback(async (idToken) => {
+    const result = await loginWithGoogleApi({ idToken });
+    window.localStorage.setItem("accessToken", result.accessToken);
+    window.localStorage.setItem("refreshToken", result.refreshToken);
+    window.localStorage.setItem("user", JSON.stringify(result.user));
+    setUser(result.user);
+    return result.user;
+  }, []);
+
   const consumePendingAction = useCallback(() => {
     const action = pendingRef.current;
     pendingRef.current = null;
@@ -79,6 +88,7 @@ export function AuthProvider({ children }) {
         openAuth,
         closeAuth,
         authenticate,
+        loginWithGoogle,
         consumePendingAction,
         logout,
       }}
