@@ -1838,6 +1838,15 @@ select:focus {
   cursor: default;
 }
 
+.google-button-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.google-button-wrapper iframe {
+  max-width: 100%;
+}
+
 .coming-soon-tag {
   position: absolute;
   right: 10px;
