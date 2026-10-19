@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ai_document_assistant
       POSTGRES_USER: assistant
@@ -22,9 +22,9 @@ services:
       CHAT_MODEL: ${CHAT_MODEL:-dots-studio/dots-3-note-preview:free}
       CHAT_REASONING_ENABLED: ${CHAT_REASONING_ENABLED:-false}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nvidia/nemotron-3-embed-1b:free}
-      CHROMA_PERSIST_DIR: /app/data/chroma
-    volumes:
-      - chroma-data:/app/data/chroma
+      DATABASE_URL: postgresql://assistant:${POSTGRES_PASSWORD:-assistant}@postgres:5432/ai_document_assistant?sslmode=disable
+      DB_SCHEMA: ai_service
+      VECTOR_DIM: ${VECTOR_DIM:-1024}
     ports:
       - "8000:8000"
     healthcheck:
@@ -33,6 +33,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
     build: ./backend
@@ -41,10 +44,15 @@ services:
       SPRING_DATASOURCE_USERNAME: assistant
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-assistant}
       AI_SERVICE_BASE_URL: http://ai-service:8000
-      WEB_SEARCH_BASE_URL: http://searxng:8080
       APP_JWT_SECRET: ${APP_JWT_SECRET:-change-this-development-secret-change-this-development-secret}
       APP_CORS_ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       APP_GOOGLE_CLIENT_ID: ${APP_GOOGLE_CLIENT_ID:-}
+      APP_STORAGE_TYPE: ${APP_STORAGE_TYPE:-local}
+      APP_STORAGE_UPLOAD_DIR: /app/data/uploads
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-}
     ports:
       - "8080:8080"
     volumes:
@@ -54,20 +62,6 @@ services:
         condition: service_healthy
       ai-service:
         condition: service_healthy
-      searxng:
-        condition: service_started
-
-  searxng:
-    image: searxng/searxng:latest
-    environment:
-      SEARXNG_BASE_URL: http://localhost:8888/
-    volumes:
-      - searxng-data:/etc/searxng
-      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
-    ports:
-      - "8888:8080"
 
 volumes:
   postgres-data:
-  chroma-data:
-  searxng-data:

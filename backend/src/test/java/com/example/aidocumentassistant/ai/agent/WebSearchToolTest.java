@@ -13,6 +13,7 @@ import org.springframework.web.client.ResourceAccessException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,6 +42,15 @@ class WebSearchToolTest {
                 new WebSearchClient.WebResult("Docker overview", "https://docs.docker.com", "Containers share the host kernel."),
                 new WebSearchClient.WebResult("Kernel docs", "https://kernel.org", "The kernel mediates hardware access.")
         );
+    }
+
+    @Test
+    void supportsReflectsWhetherABackendIsConfigured() {
+        when(webSearchClient.isEnabled()).thenReturn(true);
+        assertTrue(tool.supports("anything"));
+
+        when(webSearchClient.isEnabled()).thenReturn(false);
+        assertFalse(tool.supports("anything"));
     }
 
     @Test
@@ -111,6 +121,7 @@ class WebSearchToolTest {
 
     @Test
     void toolIdentityMatchesAgentExpectations() {
+        when(webSearchClient.isEnabled()).thenReturn(true);
         assertEquals("web", tool.id());
         assertTrue(tool.supports("any question"));
         assertEquals("Search the internet", tool.description());

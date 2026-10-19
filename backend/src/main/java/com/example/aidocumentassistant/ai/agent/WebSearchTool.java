@@ -38,7 +38,7 @@ public class WebSearchTool implements Tool {
 
     @Override
     public boolean supports(String question) {
-        return true;
+        return webSearchClient.isEnabled();
     }
 
     @Override

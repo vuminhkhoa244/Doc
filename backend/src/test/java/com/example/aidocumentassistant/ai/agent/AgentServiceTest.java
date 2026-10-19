@@ -57,6 +57,7 @@ class AgentServiceTest {
         when(ragTool.id()).thenReturn("rag");
         when(webSearchTool.id()).thenReturn("web");
         when(planner.route("Latest AI news?", List.of())).thenReturn("web");
+        when(webSearchTool.supports("Latest AI news?")).thenReturn(true);
         when(webSearchTool.executeStreaming(any(), any())).thenReturn(new ToolResult("news", List.of(), "web"));
 
         AgentService.AgentResult result = agentService.runStreaming(
@@ -69,9 +70,28 @@ class AgentServiceTest {
     }
 
     @Test
+    void autoModeFallsBackWhenRoutedToolIsDisabled() {
+        when(ragTool.id()).thenReturn("rag");
+        when(webSearchTool.id()).thenReturn("web");
+        when(planner.route("Latest AI news?", List.of())).thenReturn("web");
+        when(webSearchTool.supports("Latest AI news?")).thenReturn(false);
+        when(ragTool.supports("Latest AI news?")).thenReturn(true);
+        when(ragTool.execute(any())).thenReturn(new ToolResult("no documents", List.of(), "rag"));
+
+        AgentService.AgentResult result = agentService.run(
+                "Latest AI news?", List.of(), 1L, null, List.of()
+        );
+
+        assertEquals("rag", result.toolUsed());
+        verify(ragTool).execute(any());
+        verify(webSearchTool, never()).execute(any());
+    }
+
+    @Test
     void blankToolBehavesLikeAuto() {
         when(ragTool.id()).thenReturn("rag");
         when(planner.route("What is annual leave?", List.of(5L))).thenReturn("rag");
+        when(ragTool.supports("What is annual leave?")).thenReturn(true);
         when(ragTool.execute(any())).thenReturn(new ToolResult("15 days", List.of(), "rag"));
 
         AgentService.AgentResult result = agentService.run("What is annual leave?", List.of(5L), 1L, null, List.of());

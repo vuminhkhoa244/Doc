@@ -39,6 +39,16 @@ public class WebSearchClient {
                 .build();
     }
 
+    /**
+     * Whether a search backend is configured. When false (blank
+     * {@code app.web-search.base-url}), the tool should not claim it can
+     * answer questions, so auto-routing can fall back to RAG instead of
+     * dead-ending on "no web results".
+     */
+    public boolean isEnabled() {
+        return restClient != null;
+    }
+
     public List<WebResult> search(String query) {
         if (restClient == null) {
             return List.of();
