@@ -1,6 +1,7 @@
 package com.example.aidocumentassistant.document;
 
 import com.example.aidocumentassistant.security.AuthenticatedUser;
+import com.example.aidocumentassistant.storage.Storage;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,16 +14,17 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/images")
 public class ImageAssetController {
     private final ImageAssetService imageAssetService;
+    private final Storage storage;
 
-    public ImageAssetController(ImageAssetService imageAssetService) {
+    public ImageAssetController(ImageAssetService imageAssetService, Storage storage) {
         this.imageAssetService = imageAssetService;
+        this.storage = storage;
     }
 
     @GetMapping("/search")
@@ -41,14 +43,16 @@ public class ImageAssetController {
             @PathVariable Long id
     ) throws IOException {
         ImageAssetDtos.ImageContent file = imageAssetService.content(principal, id);
-        InputStream inputStream = Files.newInputStream(file.path());
+        InputStream inputStream = storage.openRead(file.key());
         MediaType mediaType = file.contentType() != null
                 ? MediaType.parseMediaType(file.contentType())
                 : MediaType.APPLICATION_OCTET_STREAM;
-        return ResponseEntity.ok()
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(mediaType)
-                .header("Cache-Control", "private, max-age=300")
-                .contentLength(Files.size(file.path()))
-                .body(new InputStreamResource(inputStream));
+                .header("Cache-Control", "private, max-age=300");
+        if (file.size() >= 0) {
+            builder = builder.contentLength(file.size());
+        }
+        return builder.body(new InputStreamResource(inputStream));
     }
 }

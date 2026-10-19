@@ -1,21 +1,22 @@
 package com.example.aidocumentassistant.document;
 
 import com.example.aidocumentassistant.security.AuthenticatedUser;
+import com.example.aidocumentassistant.storage.Storage;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
 @Service
 public class ImageAssetService {
     private final ImageAssetRepository imageAssets;
+    private final Storage storage;
 
-    public ImageAssetService(ImageAssetRepository imageAssets) {
+    public ImageAssetService(ImageAssetRepository imageAssets, Storage storage) {
         this.imageAssets = imageAssets;
+        this.storage = storage;
     }
 
     @Transactional(readOnly = true)
@@ -51,11 +52,11 @@ public class ImageAssetService {
     public ImageAssetDtos.ImageContent content(AuthenticatedUser principal, Long id) {
         ImageAsset asset = imageAssets.findByIdForOwner(id, principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Image not found"));
-        Path path = Path.of(asset.getStoragePath());
-        if (!Files.exists(path)) {
+        String key = asset.getStoragePath();
+        if (!storage.exists(key)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Image file no longer exists");
         }
-        return new ImageAssetDtos.ImageContent(asset.getContentType(), path);
+        return new ImageAssetDtos.ImageContent(asset.getContentType(), key, storage.size(key));
     }
 
     private String snippet(String ocrText) {

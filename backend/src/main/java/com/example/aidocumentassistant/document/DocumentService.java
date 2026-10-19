@@ -5,6 +5,7 @@ import com.example.aidocumentassistant.auth.AppUser;
 import com.example.aidocumentassistant.auth.UserRepository;
 import com.example.aidocumentassistant.config.AppProperties;
 import com.example.aidocumentassistant.security.AuthenticatedUser;
+import com.example.aidocumentassistant.storage.Storage;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,9 +14,8 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
-import java.nio.file.Files;
+import java.io.InputStream;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +34,7 @@ public class DocumentService {
     private final TableExtractor tableExtractor;
     private final ImageAssetExtractor imageAssetExtractor;
     private final AiClient aiClient;
+    private final Storage storage;
 
     public DocumentService(
             DocumentRepository documents,
@@ -46,7 +47,8 @@ public class DocumentService {
             TextChunker textChunker,
             TableExtractor tableExtractor,
             ImageAssetExtractor imageAssetExtractor,
-            AiClient aiClient
+            AiClient aiClient,
+            Storage storage
     ) {
         this.documents = documents;
         this.chunks = chunks;
@@ -59,6 +61,7 @@ public class DocumentService {
         this.tableExtractor = tableExtractor;
         this.imageAssetExtractor = imageAssetExtractor;
         this.aiClient = aiClient;
+        this.storage = storage;
     }
 
     @Transactional(readOnly = true)
@@ -76,21 +79,22 @@ public class DocumentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
 
         try {
-            Files.createDirectories(properties.storage().uploadDir());
             String safeName = sanitizeFilename(file.getOriginalFilename());
-            Path storagePath = properties.storage().uploadDir().resolve(UUID.randomUUID() + "-" + safeName);
-            Files.copy(file.getInputStream(), storagePath, StandardCopyOption.REPLACE_EXISTING);
+            byte[] bytes = file.getBytes();
+            String key = "documents/" + UUID.randomUUID() + "-" + safeName;
+            storage.store(key, bytes, normalizedContentType(file));
 
             Document document = documents.save(new Document(
                     owner,
                     safeName,
                     file.getSize(),
                     normalizedContentType(file),
-                    storagePath.toAbsolutePath().normalize().toString()
+                    key
             ));
-            index(document, storagePath);
+            index(document, key, bytes);
             return DocumentDtos.DocumentResponse.from(document);
         } catch (IOException exception) {
+            log.error("Failed to store document {}", file.getOriginalFilename(), exception);
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to store document");
         }
     }
@@ -102,7 +106,7 @@ public class DocumentService {
         deleteExtractedArtifacts(document);
         documents.delete(document);
         try {
-            Files.deleteIfExists(Path.of(document.getStoragePath()));
+            storage.delete(document.getStoragePath());
         } catch (IOException ignored) {
         }
         try {
@@ -121,12 +125,16 @@ public class DocumentService {
             aiClient.deleteIndex(id);
         } catch (RestClientException ignored) {
         }
-        Path storagePath = Path.of(document.getStoragePath());
-        if (!Files.exists(storagePath)) {
+        String key = document.getStoragePath();
+        if (!storage.exists(key)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document file no longer exists");
         }
         document.markIndexing();
-        index(document, storagePath);
+        try {
+            index(document, key, storage.readAll(key));
+        } catch (IOException exception) {
+            document.markFailed("Unable to read document from storage");
+        }
         return DocumentDtos.DocumentResponse.from(document);
     }
 
@@ -144,11 +152,11 @@ public class DocumentService {
     public DocumentFile download(AuthenticatedUser principal, Long id) {
         Document document = documents.findByIdAndOwnerId(id, principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
-        Path path = Path.of(document.getStoragePath());
-        if (!Files.exists(path)) {
+        String key = document.getStoragePath();
+        if (!storage.exists(key)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document file no longer exists");
         }
-        return new DocumentFile(document.getFilename(), document.getContentType(), path);
+        return new DocumentFile(document.getFilename(), document.getContentType(), key, storage.size(key));
     }
 
     @Transactional(readOnly = true)
@@ -175,13 +183,13 @@ public class DocumentService {
                 .toList();
     }
 
-    public record DocumentFile(String filename, String contentType, Path path) {
+    public record DocumentFile(String filename, String contentType, String key, long size) {
     }
 
     private void deleteExtractedArtifacts(Document document) {
         for (ImageAsset asset : imageAssets.findByDocumentIdOrderByPageAsc(document.getId())) {
             try {
-                Files.deleteIfExists(Path.of(asset.getStoragePath()));
+                storage.delete(asset.getStoragePath());
             } catch (IOException ignored) {
             }
         }
@@ -189,22 +197,34 @@ public class DocumentService {
         extractedTables.deleteAllByDocument(document);
     }
 
-    private void index(Document document, Path storagePath) {
+    private void index(Document document, String key, byte[] sourceBytes) {
+        Path tempFile = null;
         int savedChunks = 0;
         try {
+            // PDFBox/Tesseract/ImageIO need a real file; materialize once and reuse.
+            if (properties.storage().isCloudinary()) {
+                tempFile = java.nio.file.Files.createTempFile("index-", "-" + safeSuffix(key));
+                java.nio.file.Files.write(tempFile, sourceBytes);
+            } else {
+                tempFile = Path.of(key);
+                if (!tempFile.isAbsolute()) {
+                    tempFile = properties.storage().uploadDir().resolve(key);
+                }
+            }
+
             List<ExtractedText> extracted = documentTextExtractor.extract(
-                    storagePath, document.getFilename(), document.getContentType());
+                    tempFile, document.getFilename(), document.getContentType());
             List<TextChunker.ChunkText> textChunks = textChunker.split(extracted);
 
             List<TextChunker.ChunkText> allChunks = new java.util.ArrayList<>(textChunks);
             for (TableExtractor.TableData table : tableExtractor.extract(
-                    storagePath, document.getFilename(), document.getContentType())) {
+                    tempFile, document.getFilename(), document.getContentType())) {
                 extractedTables.save(new ExtractedTable(document, table.page(), table.markdown(), table.rowCount()));
                 allChunks.addAll(textChunker.split(List.of(new ExtractedText(
                         table.page(), "Table (page " + table.page() + "):\n" + table.markdown()))));
             }
 
-            saveImageAssets(document, storagePath, extracted);
+            saveImageAssets(document, tempFile, extracted);
 
             if (allChunks.isEmpty()) {
                 document.markFailed("No extractable text found in document (scanned PDFs and images require Tesseract OCR)");
@@ -231,24 +251,30 @@ public class DocumentService {
         } catch (Exception exception) {
             log.warn("Indexing failed for {}: {}", document.getFilename(), exception.getMessage());
             document.markFailed("Unable to index document");
+        } finally {
+            if (properties.storage().isCloudinary() && tempFile != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
+            }
         }
     }
 
-    private void saveImageAssets(Document document, Path storagePath, List<ExtractedText> extracted) {
+    private void saveImageAssets(Document document, Path sourceFile, List<ExtractedText> extracted) {
         try {
-            Path assetsDir = properties.storage().uploadDir().resolve("assets");
             List<ImageAsset> assets;
             DocumentTextExtractor.DocumentType type =
                     DocumentTextExtractor.DocumentType.from(document.getFilename(), document.getContentType());
             if (type == DocumentTextExtractor.DocumentType.PDF) {
-                assets = imageAssetExtractor.extractFromPdf(document, storagePath, assetsDir);
+                assets = imageAssetExtractor.extractFromPdf(document, sourceFile, storage);
             } else if (type == DocumentTextExtractor.DocumentType.IMAGE) {
                 String ocrText = extracted.stream()
                         .filter(page -> page.page() == 1)
                         .map(ExtractedText::text)
                         .findFirst()
                         .orElse("");
-                assets = imageAssetExtractor.fromStandaloneUpload(document, storagePath, assetsDir, ocrText);
+                assets = imageAssetExtractor.fromStandaloneUpload(document, sourceFile, storage, ocrText);
             } else {
                 assets = List.of();
             }
@@ -312,5 +338,11 @@ public class DocumentService {
         candidate = candidate.replace('\\', '/');
         candidate = Path.of(candidate).getFileName().toString();
         return candidate.replaceAll("[^a-zA-Z0-9._ -]", "_");
+    }
+
+    private String safeSuffix(String key) {
+        String name = key.substring(key.lastIndexOf('/') + 1);
+        int dot = name.lastIndexOf('.');
+        return dot >= 0 ? name.substring(dot + 1) : "bin";
     }
 }

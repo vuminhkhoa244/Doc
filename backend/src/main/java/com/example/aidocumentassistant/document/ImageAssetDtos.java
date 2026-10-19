@@ -15,6 +15,6 @@ public final class ImageAssetDtos {
     ) {
     }
 
-    public record ImageContent(String contentType, java.nio.file.Path path) {
+    public record ImageContent(String contentType, String key, long size) {
     }
 }

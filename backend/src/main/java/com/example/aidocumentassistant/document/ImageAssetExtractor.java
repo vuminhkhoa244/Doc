@@ -1,6 +1,7 @@
 package com.example.aidocumentassistant.document;
 
 import com.example.aidocumentassistant.config.AppProperties;
+import com.example.aidocumentassistant.storage.Storage;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -16,9 +17,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -34,20 +33,21 @@ public class ImageAssetExtractor {
 
     private final OcrEngine ocrEngine;
     private final AppProperties properties;
+    private final Storage storage;
 
-    public ImageAssetExtractor(OcrEngine ocrEngine, AppProperties properties) {
+    public ImageAssetExtractor(OcrEngine ocrEngine, AppProperties properties, Storage storage) {
         this.ocrEngine = ocrEngine;
         this.properties = properties;
+        this.storage = storage;
     }
 
-    public List<ImageAsset> extractFromPdf(Document document, Path pdfPath, Path assetsDir) {
+    public List<ImageAsset> extractFromPdf(Document document, Path pdfPath, Storage storage) {
         AppProperties.Images config = properties.images();
         if (config == null || !config.enabled()) {
             return List.of();
         }
         List<ImageAsset> assets = new ArrayList<>();
         try {
-            Files.createDirectories(assetsDir);
             try (PDDocument pdf = Loader.loadPDF(pdfPath.toFile())) {
                 Set<String> seenHashes = new LinkedHashSet<>();
                 for (int pageIndex = 0; pageIndex < pdf.getNumberOfPages(); pageIndex++) {
@@ -65,7 +65,7 @@ public class ImageAssetExtractor {
                         if (!(xObject instanceof PDImageXObject image)) {
                             continue;
                         }
-                        ImageAsset asset = extractOne(document, image, pageIndex + 1, assetsDir, config, seenHashes);
+                        ImageAsset asset = extractOne(document, image, pageIndex + 1, storage, config, seenHashes);
                         if (asset != null) {
                             assets.add(asset);
                         }
@@ -78,13 +78,12 @@ public class ImageAssetExtractor {
         return assets;
     }
 
-    public List<ImageAsset> fromStandaloneUpload(Document document, Path file, Path assetsDir, String ocrText) {
+    public List<ImageAsset> fromStandaloneUpload(Document document, Path file, Storage storage, String ocrText) {
         AppProperties.Images config = properties.images();
         if (config == null || !config.enabled()) {
             return List.of();
         }
         try {
-            Files.createDirectories(assetsDir);
             int width = 0;
             int height = 0;
             try {
@@ -95,19 +94,18 @@ public class ImageAssetExtractor {
                 }
             } catch (IOException ignored) {
             }
-            Path assetPath = assetsDir.resolve(UUID.randomUUID() + extensionFor(document.getContentType()));
-            Files.copy(file, assetPath, StandardCopyOption.REPLACE_EXISTING);
-            long size = Files.size(assetPath);
-            String hash = sha256(Files.readAllBytes(assetPath));
+            String key = "assets/" + UUID.randomUUID() + extensionFor(document.getContentType());
+            byte[] bytes = java.nio.file.Files.readAllBytes(file);
+            storage.store(key, bytes, document.getContentType());
             return List.of(new ImageAsset(
                     document,
                     1,
-                    assetPath.toAbsolutePath().normalize().toString(),
+                    key,
                     document.getContentType(),
                     width,
                     height,
-                    size,
-                    hash,
+                    bytes.length,
+                    sha256(bytes),
                     truncate(ocrText)
             ));
         } catch (IOException exception) {
@@ -120,7 +118,7 @@ public class ImageAssetExtractor {
             Document document,
             PDImageXObject image,
             int page,
-            Path assetsDir,
+            Storage storage,
             AppProperties.Images config,
             Set<String> seenHashes
     ) {
@@ -140,8 +138,11 @@ public class ImageAssetExtractor {
             if (buffered == null) {
                 return null;
             }
-            Path assetPath = assetsDir.resolve(UUID.randomUUID() + ".png");
-            ImageIO.write(toRgb(buffered), "png", assetPath.toFile());
+            String key = "assets/" + UUID.randomUUID() + ".png";
+            ByteArrayOutputStream pngBytes = new ByteArrayOutputStream();
+            ImageIO.write(toRgb(buffered), "png", pngBytes);
+            byte[] bytes = pngBytes.toByteArray();
+            storage.store(key, bytes, "image/png");
             String caption = "";
             if (ocrEngine.enabled()) {
                 caption = normalizeCaption(ocrEngine.recognize(buffered));
@@ -149,11 +150,11 @@ public class ImageAssetExtractor {
             return new ImageAsset(
                     document,
                     page,
-                    assetPath.toAbsolutePath().normalize().toString(),
+                    key,
                     "image/png",
                     buffered.getWidth(),
                     buffered.getHeight(),
-                    Files.size(assetPath),
+                    bytes.length,
                     hash,
                     truncate(caption)
             );

@@ -28,6 +28,7 @@ class AiClientLiveRoundTripTest {
                 new AppProperties.WebSearch("http://localhost:8888", 8, 5),
                 null,
                 null,
+                null,
                 null
         );
         return new AiClient(properties);
