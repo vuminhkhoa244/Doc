@@ -1,15 +1,11 @@
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
-
 from fastapi.testclient import TestClient
 
-from test_api import FakeOpenAI, index_sample_document
 from app.config import Settings
 from app.corpus import Bm25Corpus, CorpusChunk
 from app.main import create_app
 from app.rerank import parse_rerank_order
+from tests.fakes import InMemoryVectorStore
+from tests.test_api import FakeOpenAI, index_sample_document
 
 
 class RerankFlipOpenAI(FakeOpenAI):
@@ -69,15 +65,17 @@ def test_parse_rerank_order_handles_garbage_and_missing():
     assert parse_rerank_order("", 1) == [0]
 
 
-def test_bm25_warm_from_chroma_after_restart(tmp_path):
-    persist_dir = str(tmp_path / "chroma")
-    settings = Settings(openai_api_key="test-key", chroma_persist_dir=persist_dir)
+def test_bm25_warm_from_store_after_restart():
+    # The store outlives the app: a restart rebuilds the in-memory BM25 corpus
+    # from whatever the vector store still holds.
+    store = InMemoryVectorStore()
+    settings = Settings(openai_api_key="test-key")
 
-    app = create_app(settings=settings, openai_client=FakeOpenAI())
+    app = create_app(settings=settings, store=store, openai_client=FakeOpenAI())
     with TestClient(app) as client:
         index_sample_document(client)
 
-    restarted = create_app(settings=settings, openai_client=FakeOpenAI())
+    restarted = create_app(settings=settings, store=store, openai_client=FakeOpenAI())
     with TestClient(restarted) as client:
         assert len(restarted.state.corpus) == 2
         results = client.post("/search", json={"query": "annual leave", "limit": 5}).json()["results"]
@@ -85,9 +83,9 @@ def test_bm25_warm_from_chroma_after_restart(tmp_path):
         assert all(result["documentId"] == 1 for result in results)
 
 
-def test_query_rerank_reorders_sources(tmp_path):
-    settings = Settings(openai_api_key="test-key", chroma_persist_dir=str(tmp_path / "chroma"))
-    app = create_app(settings=settings, openai_client=RerankFlipOpenAI())
+def test_query_rerank_reorders_sources():
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=RerankFlipOpenAI())
     with TestClient(app) as client:
         index_sample_document(client)
 
@@ -102,9 +100,9 @@ def test_query_rerank_reorders_sources(tmp_path):
         assert response.json()["sources"][0]["page"] == 13
 
 
-def test_query_rerank_garbage_falls_back_to_retrieval_order(tmp_path):
-    settings = Settings(openai_api_key="test-key", chroma_persist_dir=str(tmp_path / "chroma"))
-    app = create_app(settings=settings, openai_client=RerankGarbageOpenAI())
+def test_query_rerank_garbage_falls_back_to_retrieval_order():
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=RerankGarbageOpenAI())
     with TestClient(app) as client:
         index_sample_document(client)
 
@@ -116,13 +114,9 @@ def test_query_rerank_garbage_falls_back_to_retrieval_order(tmp_path):
         assert response.json()["sources"][0]["page"] == 12
 
 
-def test_query_rerank_disabled_keeps_retrieval_order(tmp_path):
-    settings = Settings(
-        openai_api_key="test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
-        rerank_enabled=False,
-    )
-    app = create_app(settings=settings, openai_client=FakeOpenAI())
+def test_query_rerank_disabled_keeps_retrieval_order():
+    settings = Settings(openai_api_key="test-key", rerank_enabled=False)
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=FakeOpenAI())
     with TestClient(app) as client:
         index_sample_document(client)
         response = client.post(

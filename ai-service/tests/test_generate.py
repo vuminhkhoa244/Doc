@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app import generation
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import InMemoryVectorStore
 
 WEB_CONTEXT = (
     "[1] Docker overview\nURL: https://docs.docker.com\n"
@@ -33,12 +34,9 @@ def fake() -> CapturingOpenAI:
 
 
 @pytest.fixture()
-def client(tmp_path, fake):
-    settings = Settings(
-        openai_api_key="test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
-    )
-    app = create_app(settings=settings, openai_client=fake)
+def client(fake):
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=fake)
     with TestClient(app) as test_client:
         yield test_client
 
@@ -84,13 +82,12 @@ def test_generate_rejects_blank_question(client):
     assert response.status_code == 422
 
 
-def test_generate_without_api_key_returns_503(tmp_path):
+def test_generate_without_api_key_returns_503():
     settings = Settings(
         openrouter_api_key="",
         openai_api_key="",
-        chroma_persist_dir=str(tmp_path / "chroma"),
     )
-    app = create_app(settings=settings, openai_client=None)
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=None)
     with TestClient(app) as test_client:
         response = test_client.post(
             "/generate",

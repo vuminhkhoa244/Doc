@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import InMemoryVectorStore
 from tests.test_api import FakeOpenAI
 
 
@@ -25,12 +26,9 @@ def index_document(client, document_id, filename, texts):
 
 
 @pytest.fixture()
-def client(tmp_path):
-    settings = Settings(
-        openai_api_key="test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
-    )
-    app = create_app(settings=settings, openai_client=FakeOpenAI())
+def client():
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=FakeOpenAI())
     with TestClient(app) as test_client:
         yield test_client
 

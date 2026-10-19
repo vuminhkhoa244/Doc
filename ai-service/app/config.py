@@ -13,8 +13,14 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     embedding_model: str = "nvidia/nemotron-3-embed-1b:free"
     chat_model: str = "dots-studio/dots-3-note-preview:free"
-    chroma_persist_dir: str = "./data/chroma"
-    collection_name: str = "documents"
+    # Postgres DSN with the pgvector extension available (e.g. Neon).
+    database_url: str = ""
+    # Schema inside that database owned by this service. Keeps Hibernate out
+    # of the vector table's way when the app database is shared with the backend.
+    db_schema: str = "ai_service"
+    # Must match the dimension of EMBEDDING_MODEL. Changing the model requires
+    # recreating the chunks table; startup fails loudly on a mismatch.
+    vector_dim: int = 1024
     top_k: int = 5
     history_max_turns: int = 4
     embedding_batch_size: int = 100

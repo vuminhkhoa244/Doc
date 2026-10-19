@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import InMemoryVectorStore
 
 
 class CapturingOpenAI:
@@ -27,12 +28,9 @@ def fake() -> CapturingOpenAI:
 
 
 @pytest.fixture()
-def client(tmp_path, fake):
-    settings = Settings(
-        openai_api_key="test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
-    )
-    app = create_app(settings=settings, openai_client=fake)
+def client(fake):
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=fake)
     with TestClient(app) as test_client:
         yield test_client
 
@@ -57,14 +55,13 @@ def test_complete_rejects_blank_prompt(client):
     assert response.status_code == 422
 
 
-def test_complete_requires_api_key(tmp_path):
+def test_complete_requires_api_key():
     settings = Settings(
         llm_provider="openai",
         openai_api_key="",
         openrouter_api_key="",
-        chroma_persist_dir=str(tmp_path / "chroma"),
     )
-    app = create_app(settings=settings)
+    app = create_app(settings=settings, store=InMemoryVectorStore())
     with TestClient(app) as test_client:
         response = test_client.post(
             "/complete", json={"system": "sys", "prompt": "hello"}

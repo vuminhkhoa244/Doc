@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 import json
 
-import chromadb
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
@@ -9,6 +8,7 @@ from openai import OpenAI
 from app import generation, indexing, rerank, retrieval
 from app.config import Settings
 from app.corpus import Bm25Corpus, CorpusChunk
+from app.store import PgVectorStore, VectorStore
 from app.models import (
     CompleteRequest,
     CompleteResponse,
@@ -41,39 +41,42 @@ def _build_openai(settings: Settings) -> OpenAI:
     )
 
 
-def _build_collection(settings: Settings):
-    client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-    return client.get_or_create_collection(
-        name=settings.collection_name,
-        metadata={"hnsw:space": "cosine"},
+def _build_store(settings: Settings) -> PgVectorStore:
+    if not settings.database_url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Point it at a Postgres DSN with the pgvector "
+            "extension available (e.g. your Neon connection string)."
+        )
+    return PgVectorStore(
+        conninfo=settings.database_url,
+        schema=settings.db_schema,
+        vector_dim=settings.vector_dim,
     )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    settings = Settings()
-    app.state.settings = settings
-    app.state.collection = _build_collection(settings)
-    app.state.corpus = Bm25Corpus()
-    app.state.corpus.warm_from_collection(app.state.collection)
-    app.state.openai = _build_openai(settings) if settings.resolved_api_key else None
-    yield
-
-
-def create_app(settings: Settings | None = None, collection=None, openai_client=None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    store: VectorStore | None = None,
+    openai_client=None,
+) -> FastAPI:
     @asynccontextmanager
     async def injected_lifespan(app: FastAPI):
         app.state.settings = settings or Settings()
-        app.state.collection = collection if collection is not None else _build_collection(app.state.settings)
+        active_store = store if store is not None else _build_store(app.state.settings)
+        active_store.open()
+        app.state.store = active_store
         app.state.corpus = Bm25Corpus()
-        app.state.corpus.warm_from_collection(app.state.collection)
+        app.state.corpus.warm_from_store(active_store)
         if openai_client is not None:
             app.state.openai = openai_client
         elif app.state.settings.resolved_api_key:
             app.state.openai = _build_openai(app.state.settings)
         else:
             app.state.openai = None
-        yield
+        try:
+            yield
+        finally:
+            active_store.close()
 
     app = FastAPI(title="AI Document Assistant - AI Service", lifespan=injected_lifespan)
     _register_routes(app)
@@ -101,6 +104,10 @@ def _sources_from_chunks(chunks) -> list[SourceOut]:
 def _register_routes(app: FastAPI) -> None:
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
+        try:
+            app.state.store.ping()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Vector store unavailable: {exc}") from exc
         return HealthResponse(status="ok")
 
     @app.post("/index", response_model=IndexResponse)
@@ -109,7 +116,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=503, detail="LLM API key is not configured")
         try:
             indexed = indexing.index_document(
-                app.state.collection, app.state.openai, app.state.settings, request
+                app.state.store, app.state.openai, app.state.settings, request
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Indexing failed: {exc}") from exc
@@ -131,7 +138,7 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.delete("/index/{document_id}", response_model=DeleteIndexResponse)
     def delete_index(document_id: int) -> DeleteIndexResponse:
-        deleted = indexing.delete_document(app.state.collection, document_id)
+        deleted = indexing.delete_document(app.state.store, document_id)
         app.state.corpus.remove_document(document_id)
         return DeleteIndexResponse(documentId=document_id, deleted=deleted)
 
@@ -143,7 +150,7 @@ def _register_routes(app: FastAPI) -> None:
             settings = app.state.settings
             candidate_limit = settings.top_k * 2 if settings.rerank_enabled else settings.top_k
             chunks = retrieval.search_chunks(
-                app.state.collection,
+                app.state.store,
                 app.state.openai,
                 settings,
                 request.question,
@@ -175,7 +182,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=503, detail="LLM API key is not configured")
 
         settings = app.state.settings
-        collection = app.state.collection
+        store = app.state.store
         openai_client = app.state.openai
         corpus = app.state.corpus
 
@@ -183,7 +190,7 @@ def _register_routes(app: FastAPI) -> None:
             try:
                 candidate_limit = settings.top_k * 2 if settings.rerank_enabled else settings.top_k
                 chunks = retrieval.search_chunks(
-                    collection,
+                    store,
                     openai_client,
                     settings,
                     request.question,
@@ -280,7 +287,7 @@ def _register_routes(app: FastAPI) -> None:
             raise HTTPException(status_code=503, detail="LLM API key is not configured")
         try:
             chunks = retrieval.search_chunks(
-                app.state.collection,
+                app.state.store,
                 app.state.openai,
                 app.state.settings,
                 request.query,

@@ -28,7 +28,7 @@ class Bm25Hit:
 
 
 class Bm25Corpus:
-    """In-process BM25 index kept in sync with the Chroma collection.
+    """In-process BM25 index kept in sync with the vector store.
 
     The corpus is small (personal-document scale), so the index is rebuilt
     on each mutation instead of maintaining incremental structures.
@@ -58,24 +58,19 @@ class Bm25Corpus:
             self._rebuild()
             return True
 
-    def warm_from_collection(self, collection) -> None:
-        """Load every indexed chunk from Chroma into the BM25 index."""
-        existing = collection.get(include=["metadatas", "documents"])
-        metadatas = existing.get("metadatas") or []
-        documents = existing.get("documents") or []
+    def warm_from_store(self, store) -> None:
+        """Load every indexed chunk from the vector store into the BM25 index."""
+        rows = store.all_chunks()
 
         by_document: dict[int, list[CorpusChunk]] = {}
-        for text, metadata in zip(documents, metadatas):
-            if not metadata or "documentId" not in metadata:
-                continue
-            document_id = int(metadata["documentId"])
-            by_document.setdefault(document_id, []).append(
+        for row in rows:
+            by_document.setdefault(row.document_id, []).append(
                 CorpusChunk(
-                    document_id=document_id,
-                    chunk_index=int(metadata["chunkIndex"]),
-                    page=int(metadata["page"]),
-                    filename=str(metadata.get("filename", "")),
-                    text=text or "",
+                    document_id=row.document_id,
+                    chunk_index=row.chunk_index,
+                    page=row.page,
+                    filename=row.filename,
+                    text=row.text or "",
                 )
             )
 

@@ -1,5 +1,6 @@
 from app.config import Settings
 from app.models import IndexRequest
+from app.store import ChunkInput, VectorStore
 
 
 def _embed_texts(openai_client, settings: Settings, texts: list[str]) -> list[list[float]]:
@@ -12,37 +13,29 @@ def _embed_texts(openai_client, settings: Settings, texts: list[str]) -> list[li
     return embeddings
 
 
-def index_document(collection, openai_client, settings: Settings, request: IndexRequest) -> int:
+def index_document(store: VectorStore, openai_client, settings: Settings, request: IndexRequest) -> int:
     if not request.chunks:
         return 0
 
     texts = [chunk.text for chunk in request.chunks]
     embeddings = _embed_texts(openai_client, settings, texts)
 
-    ids = [f"{request.documentId}:{chunk.chunkIndex}" for chunk in request.chunks]
-    metadatas = [
-        {
-            "documentId": request.documentId,
-            "filename": request.filename,
-            "contentType": request.contentType,
-            "chunkIndex": chunk.chunkIndex,
-            "page": chunk.page,
-        }
-        for chunk in request.chunks
-    ]
-
-    collection.upsert(
-        ids=ids,
-        embeddings=embeddings,
-        documents=texts,
-        metadatas=metadatas,
+    store.upsert(
+        document_id=request.documentId,
+        filename=request.filename,
+        content_type=request.contentType,
+        chunks=[
+            ChunkInput(
+                chunk_index=chunk.chunkIndex,
+                page=chunk.page,
+                text=chunk.text,
+                embedding=embedding,
+            )
+            for chunk, embedding in zip(request.chunks, embeddings)
+        ],
     )
     return len(request.chunks)
 
 
-def delete_document(collection, document_id: int) -> bool:
-    existing = collection.get(where={"documentId": document_id}, include=[])
-    if not existing or not existing.get("ids"):
-        return False
-    collection.delete(where={"documentId": document_id})
-    return True
+def delete_document(store: VectorStore, document_id: int) -> bool:
+    return store.delete_document(document_id)

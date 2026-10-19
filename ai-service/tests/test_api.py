@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import InMemoryVectorStore
 
 
 def fake_embedding(text: str) -> list[float]:
@@ -52,12 +53,9 @@ class FakeOpenAI:
 
 
 @pytest.fixture()
-def client(tmp_path):
-    settings = Settings(
-        openai_api_key="test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
-    )
-    app = create_app(settings=settings, openai_client=FakeOpenAI())
+def client():
+    settings = Settings(openai_api_key="test-key")
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=FakeOpenAI())
     with TestClient(app) as test_client:
         yield test_client
 
@@ -201,16 +199,15 @@ def test_generate_stream_emits_tokens_then_done(client):
     assert done_events[0]["answer"]
 
 
-def test_chat_requests_disable_openrouter_reasoning_by_default(client, tmp_path):
+def test_chat_requests_disable_openrouter_reasoning_by_default(client):
     fake = FakeOpenAI()
     settings = Settings(
         openai_api_key="test-key",
         llm_provider="openrouter",
         openrouter_api_key="or-test-key",
-        chroma_persist_dir=str(tmp_path / "chroma"),
     )
     assert settings.chat_reasoning_enabled is False
-    app = create_app(settings=settings, openai_client=fake)
+    app = create_app(settings=settings, store=InMemoryVectorStore(), openai_client=fake)
     with TestClient(app) as test_client:
         index_sample_document(test_client)
         response = test_client.post("/query", json={"question": "How many days of annual leave?"})

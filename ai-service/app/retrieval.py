@@ -21,35 +21,23 @@ def embed_query(openai_client, settings: Settings, query: str) -> list[float]:
 
 
 def _vector_search(
-    collection,
+    store,
     query_embedding: list[float],
     document_ids: Optional[list[int]],
     pool: int,
 ) -> list[RetrievedChunk]:
-    where = {"documentId": {"$in": document_ids}} if document_ids is not None else None
-
-    result = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=min(pool, collection.count()),
-        where=where,
-        include=["documents", "metadatas", "distances"],
-    )
+    rows = store.query(query_embedding, k=pool, document_ids=document_ids)
 
     chunks: list[RetrievedChunk] = []
-    ids = result.get("ids") or [[]]
-    documents = result.get("documents") or [[]]
-    metadatas = result.get("metadatas") or [[]]
-    distances = result.get("distances") or [[]]
-
-    for _id, text, metadata, distance in zip(ids[0], documents[0], metadatas[0], distances[0]):
+    for row in rows:
         chunks.append(
             RetrievedChunk(
-                document_id=int(metadata["documentId"]),
-                filename=str(metadata["filename"]),
-                page=int(metadata["page"]),
-                chunk_index=int(metadata["chunkIndex"]),
-                text=text or "",
-                score=round(1.0 - float(distance), 6),
+                document_id=int(row.document_id),
+                filename=str(row.filename),
+                page=int(row.page),
+                chunk_index=int(row.chunk_index),
+                text=row.text or "",
+                score=round(1.0 - float(row.distance), 6),
             )
         )
     return chunks
@@ -117,7 +105,7 @@ def _fuse(
 
 
 def _hybrid_search(
-    collection,
+    store,
     settings: Settings,
     query: str,
     document_ids: Optional[list[int]],
@@ -127,7 +115,7 @@ def _hybrid_search(
 ) -> list[RetrievedChunk]:
     vector_candidates: list[RetrievedChunk] = []
     if query_embedding is not None:
-        vector_candidates = _vector_search(collection, query_embedding, document_ids, pool)
+        vector_candidates = _vector_search(store, query_embedding, document_ids, pool)
 
     bm25_candidates: list[RetrievedChunk] = []
     if corpus is not None and len(corpus) > 0:
@@ -141,7 +129,7 @@ def _hybrid_search(
 
 
 def search_chunks(
-    collection,
+    store,
     openai_client,
     settings: Settings,
     query: str,
@@ -161,7 +149,7 @@ def search_chunks(
     if document_ids is not None and len(document_ids) == 0:
         return []
 
-    vector_count = collection.count()
+    vector_count = store.count()
     corpus_size = len(corpus) if corpus is not None else 0
     if vector_count == 0 and corpus_size == 0:
         return []
@@ -176,11 +164,11 @@ def search_chunks(
             # Vector side is best-effort; BM25 still provides lexical recall.
             query_embedding = None
 
-    universe = _hybrid_search(collection, settings, query, document_ids, pool, corpus, query_embedding)
+    universe = _hybrid_search(store, settings, query, document_ids, pool, corpus, query_embedding)
     if not focus_ids or (document_ids is not None and set(focus_ids) == set(document_ids)):
         return universe[:limit]
 
-    focused = _hybrid_search(collection, settings, query, list(focus_ids), pool, corpus, query_embedding)
+    focused = _hybrid_search(store, settings, query, list(focus_ids), pool, corpus, query_embedding)
     half = max(1, limit // 2)
     merged: list[RetrievedChunk] = []
     seen: set[tuple[int, int]] = set()
