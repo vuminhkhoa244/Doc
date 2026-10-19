@@ -46,6 +46,13 @@ class BackendIntegrationTest {
     }
 
     @Test
+    void healthIsReachableWithoutAuth() throws Exception {
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"));
+    }
+
+    @Test
     void registerLoginAndMeReturnUser() throws Exception {
         String email = uniqueEmail("me-test");
         String token = registerAndGetToken(email);

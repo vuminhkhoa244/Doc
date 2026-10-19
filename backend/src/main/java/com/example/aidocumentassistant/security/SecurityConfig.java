@@ -45,6 +45,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/google").permitAll()
+                        .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/error").permitAll()
                         // SseEmitter completion re-enters the filter chain as an ASYNC
                         // dispatch where JwtAuthenticationFilter is skipped; authorize the
