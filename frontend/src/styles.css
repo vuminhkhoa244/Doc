@@ -2624,3 +2624,89 @@ select:focus {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* ---------- Responsive layout hardening ---------- */
+
+/* Mid widths (small laptops, browser with side panel): keep the two columns
+   from fighting by making the sidebar fluid instead of a fixed 360px. */
+@media (min-width: 921px) and (max-width: 1280px) {
+  .workspace {
+    grid-template-columns: clamp(240px, 26vw, 320px) minmax(0, 1fr);
+  }
+
+  .topbar {
+    gap: 16px;
+    padding: 16px 20px;
+  }
+
+  .conversation-toolbar {
+    padding: 10px 20px;
+  }
+
+  .document-panel {
+    padding: 16px 18px;
+    gap: 14px;
+  }
+
+  .chat-panel {
+    padding: 18px 20px 22px;
+  }
+}
+
+/* Stacked (tab-portrait / narrow windows): one column. Also keep the
+   collapsible-sidebar rules from fighting the stack. */
+@media (max-width: 920px) {
+  .workspace,
+  .workspace:has(.document-panel.collapsed) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topbar,
+  .conversation-toolbar {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .conversation-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .topbar h1 {
+    font-size: 1.2rem;
+  }
+}
+
+/* Phones: tighter bubbles and controls, roomier thumbnails */
+@media (max-width: 640px) {
+  .conversation-tab span:first-child {
+    max-width: 120px;
+  }
+
+  .chat-panel {
+    padding: 16px 14px 20px;
+    gap: 14px;
+  }
+
+  .message-body {
+    padding: 12px;
+  }
+
+  .chat-input {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .chat-input input {
+    min-height: 42px;
+  }
+
+  .send-button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .image-grid,
+  .image-search-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
