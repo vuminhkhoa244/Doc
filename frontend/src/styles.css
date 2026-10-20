@@ -1929,12 +1929,18 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  /* The sidebar flows with the page; only its lists get capped heights
+     (with internal scrollbars) so they can't be crushed flat. */
   .document-panel {
-    max-height: 220px;
+    max-height: none;
   }
 
-  .chat-input {
-    flex-direction: column;
+  .extracted-section {
+    max-height: 260px;
+  }
+
+  .document-list {
+    max-height: min(45vh, 420px);
   }
 }
 
