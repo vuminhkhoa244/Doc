@@ -1,8 +1,11 @@
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 from app.config import Settings
 from app.corpus import Bm25Corpus
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -160,11 +163,21 @@ def search_chunks(
     if vector_count > 0:
         try:
             query_embedding = embed_query(openai_client, settings, query)
-        except Exception:
+        except Exception as exc:
             # Vector side is best-effort; BM25 still provides lexical recall.
+            log.warning("Query embedding failed; falling back to BM25 only: %r", exc)
             query_embedding = None
 
     universe = _hybrid_search(store, settings, query, document_ids, pool, corpus, query_embedding)
+    if not universe:
+        log.warning(
+            "Retrieval returned no passages (store has %s chunks, document_ids=%s, "
+            "focus_ids=%s, vector side used=%s)",
+            vector_count,
+            document_ids,
+            focus_ids,
+            query_embedding is not None,
+        )
     if not focus_ids or (document_ids is not None and set(focus_ids) == set(document_ids)):
         return universe[:limit]
 

@@ -12,8 +12,8 @@ SYSTEM_PROMPT = (
 )
 
 NO_CONTEXT_ANSWER = (
-    "I could not find a matching answer in your indexed documents. "
-    "Upload and index a document or ask using related terms."
+    "I could not find relevant passages in your indexed documents for that "
+    "question. Try rephrasing it with different words."
 )
 
 

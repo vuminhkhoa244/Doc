@@ -1,6 +1,10 @@
+import logging
+
 from app.config import Settings
 from app.models import IndexRequest
 from app.store import ChunkInput, VectorStore
+
+log = logging.getLogger(__name__)
 
 
 def _embed_texts(openai_client, settings: Settings, texts: list[str]) -> list[list[float]]:
@@ -15,6 +19,11 @@ def _embed_texts(openai_client, settings: Settings, texts: list[str]) -> list[li
 
 def index_document(store: VectorStore, openai_client, settings: Settings, request: IndexRequest) -> int:
     if not request.chunks:
+        log.warning(
+            "Index request for document %s (%s) contained no chunks; nothing will be searchable",
+            request.documentId,
+            request.filename,
+        )
         return 0
 
     texts = [chunk.text for chunk in request.chunks]
